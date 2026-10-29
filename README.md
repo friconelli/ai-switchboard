@@ -19,7 +19,7 @@ App macOS (SwiftUI) per orchestrare Claude Code con più account (`claude-fede`,
 
 ## Warp
 
-Scrive `~/.warp/launch_configurations/claude-deck.yaml` e apre `warp://launch/claude-deck.yaml`.
+Apre una scheda Warp nella cartella della chat e vi incolla il comando (serve il permesso Accessibilità per Claude Deck; senza, il comando resta negli appunti). Senza Warp usa Terminale.
 
 ## Build
 

@@ -54,6 +54,17 @@ struct ContentView: View {
         }
         .onAppear { store.start() }
         .alert(
+            "Quasi fatto",
+            isPresented: Binding(get: { store.noticeMessage != nil }, set: { if !$0 { store.noticeMessage = nil } })
+        ) {
+            Button("Apri Accessibilità") {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+            }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(store.noticeMessage ?? "")
+        }
+        .alert(
             "Operazione non riuscita",
             isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })
         ) {

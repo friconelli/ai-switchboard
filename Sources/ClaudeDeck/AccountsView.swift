@@ -170,7 +170,7 @@ struct AccountsView: View {
         panel.prompt = "Avvia Claude qui"
         panel.directoryURL = ClaudePaths.home.appendingPathComponent("projects")
         if panel.runModal() == .OK, let url = panel.url {
-            Launcher.newChat(in: url.path, account: account)
+            store.newChat(in: url.path, with: account)
         }
     }
 }

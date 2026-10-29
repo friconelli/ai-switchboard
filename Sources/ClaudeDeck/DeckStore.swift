@@ -14,6 +14,7 @@ final class DeckStore: ObservableObject {
     @Published var contentMatches: Set<String>?
     @Published var isSearchingContent = false
     @Published var errorMessage: String?
+    @Published var noticeMessage: String?
 
     private let indexer = ChatIndexer()
     private var timer: Timer?
@@ -115,7 +116,17 @@ final class DeckStore: ObservableObject {
     // MARK: - Chat actions
 
     func resume(_ chat: ChatSession, with account: ClaudeAccount) {
-        Launcher.resume(chat, account: account)
+        handle(Launcher.resume(chat, account: account))
+    }
+
+    func newChat(in directory: String, with account: ClaudeAccount) {
+        handle(Launcher.newChat(in: directory, account: account))
+    }
+
+    private func handle(_ outcome: Launcher.Outcome) {
+        if case .copiedToClipboard(let command) = outcome {
+            noticeMessage = "Ho aperto una scheda Warp e copiato il comando negli appunti: incollalo con ⌘V e premi Invio.\n\n\(command)\n\nPer farlo in automatico, abilita Claude Deck in Impostazioni di Sistema → Privacy e sicurezza → Accessibilità."
+        }
     }
 
     func rename(_ chat: ChatSession, to title: String) {
