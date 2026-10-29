@@ -31,7 +31,7 @@ enum MergeEngine {
     }
 
     private static let droppedTypes: Set<String> = ["custom-title", "agent-name", "ai-title", "last-prompt"]
-    private static let leafTypes: Set<String> = ["user", "assistant", "system", "attachment"]
+    static let leafTypes: Set<String> = ["user", "assistant", "system", "attachment"]
 
     static func merge(
         _ sessions: [ChatSession],
@@ -185,7 +185,7 @@ enum MergeEngine {
 
     // MARK: - Writing and verification
 
-    private static func write(_ records: [[String: Any]], to url: URL) throws {
+    static func write(_ records: [[String: Any]], to url: URL) throws {
         FileManager.default.createFile(atPath: url.path, contents: nil)
         let handle = try FileHandle(forWritingTo: url)
         defer { try? handle.close() }
@@ -197,7 +197,7 @@ enum MergeEngine {
     }
 
     /// Checks the merged file is one linear conversation; returns its message count.
-    private static func verify(_ url: URL) throws -> Int {
+    static func verify(_ url: URL) throws -> Int {
         let data = try Data(contentsOf: url)
         var parents: [String: String?] = [:]
         var order: [String] = []
@@ -234,7 +234,7 @@ enum MergeEngine {
     // MARK: - Side files
 
     /// Tool results and subagent transcripts live in `<project>/<sessionId>/`.
-    private static func copySideFiles(of session: ChatSession, to newSideDir: URL, newID: String) {
+    static func copySideFiles(of session: ChatSession, to newSideDir: URL, newID: String) {
         let source = session.fileURL.deletingPathExtension()
         let oldSideDirs = sideDirPaths(of: session)
         copyTree(from: source, to: newSideDir) { file, data in
@@ -260,7 +260,7 @@ enum MergeEngine {
     }
 
     /// File backups used by rewind live in `<configDir>/file-history/<sessionId>/`.
-    private static func copyFileHistory(from oldID: String, to newID: String, configDirs: [URL]) {
+    static func copyFileHistory(from oldID: String, to newID: String, configDirs: [URL]) {
         for dir in configDirs {
             let history = dir.appendingPathComponent("file-history")
             copyTree(from: history.appendingPathComponent(oldID), to: history.appendingPathComponent(newID)) { _, data in data }

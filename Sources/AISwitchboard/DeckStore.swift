@@ -222,6 +222,51 @@ final class DeckStore: ObservableObject {
         )
     }
 
+    /// Splits `source` into one new chat per topic; the original goes to the Trash only if every
+    /// new chat was written and verified and `trashOriginal` is set. Returns the new chats.
+    func split(_ source: SplitEngine.Source, topics: [SplitEngine.Topic], trashOriginal: Bool) -> [ChatSession] {
+        let chat = source.chat
+        if activeSessionIDs.contains(chat.id) {
+            errorMessage = ChatOperationError.active(chat.displayTitle).localizedDescription
+            return []
+        }
+
+        let results: [SplitEngine.Result]
+        do {
+            results = try SplitEngine.split(source, topics: topics, configDirs: accounts.map(\.configDir))
+        } catch {
+            errorMessage = "Divisione non riuscita, la chat originale non è stata toccata.\n\n\(error.localizedDescription)"
+            return []
+        }
+
+        for account in accounts where !account.isDefault && (sessionAccounts[chat.id]?.contains(account.id) ?? false) {
+            for result in results {
+                try? appendHistory(result.sessionID, cwd: result.folder, title: result.title, account: account)
+            }
+        }
+
+        if trashOriginal {
+            do { try ChatOperations.trash(chat) } catch {
+                errorMessage = "Divisione completata, ma non ho potuto spostare nel Cestino “\(chat.displayTitle)”."
+            }
+        }
+
+        sessionAccounts = AccountScanner.sessionAccounts(accounts)
+        reloadChats()
+        return results.map {
+            ChatSession(
+                id: $0.sessionID,
+                fileURL: $0.fileURL,
+                projectDir: $0.projectDir,
+                cwd: $0.folder,
+                title: $0.title,
+                isCustomTitle: true,
+                modifiedAt: Date(),
+                sizeBytes: 0
+            )
+        }
+    }
+
     func killSession(_ session: ActiveSession) {
         kill(session.pid, SIGTERM)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.refreshActiveSessions() }

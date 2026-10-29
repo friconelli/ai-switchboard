@@ -16,6 +16,7 @@ struct ChatsView: View {
     @State private var mergeTargets: [ChatSession] = []
     @State private var trashTargets: [ChatSession] = []
     @State private var moveTargets: [ChatSession] = []
+    @State private var splitTarget: ChatSession?
 
     private var projects: [(dir: String, count: Int)] {
         Dictionary(grouping: store.chats, by: \.projectDir)
@@ -83,6 +84,11 @@ struct ChatsView: View {
         .sheet(item: $renameTarget) { chat in
             RenameSheet(chat: chat) { title in
                 store.rename(chat, to: title)
+            }
+        }
+        .sheet(item: $splitTarget) { chat in
+            SplitSheet(store: store, chat: chat) { created in
+                selection = Set(created.map(\.id))
             }
         }
         .sheet(isPresented: Binding(get: { !mergeTargets.isEmpty }, set: { if !$0 { mergeTargets = [] } })) {
@@ -217,6 +223,13 @@ struct ChatsView: View {
                 }
                 .help("Rinomina")
                 .secondaryButton()
+                Button {
+                    splitTarget = chat
+                } label: {
+                    Image(systemName: "scissors")
+                }
+                .help("Dividi in più chat, una per argomento")
+                .secondaryButton()
             }
 
             if selectedChats.count >= 2 {
@@ -282,6 +295,7 @@ struct ChatsView: View {
                 }
             }
             Button("Rinomina…") { renameTarget = chat }
+            Button("Dividi in argomenti…") { splitTarget = chat }
             Button("Mostra nel Finder") { NSWorkspace.shared.activateFileViewerSelecting([chat.fileURL]) }
             Button("Copia ID sessione") {
                 NSPasteboard.general.clearContents()
