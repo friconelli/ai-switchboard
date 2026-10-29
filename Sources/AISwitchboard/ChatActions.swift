@@ -62,6 +62,7 @@ struct ToolButton: View {
         }
         .secondaryButton()
         .foregroundStyle(role == .destructive ? AnyShapeStyle(.red) : AnyShapeStyle(.primary))
+        .accessibilityLabel(title)
     }
 }
 
@@ -164,7 +165,7 @@ struct ToolsGuideView: View {
                     tool("scissors", "Dividi", "Una chat lunga diventa più chat, una per argomento, con un riassunto iniziale.")
                     tool("arrow.down.right.and.arrow.up.left", "Snellisci", "Toglie log, immagini e output temporanei: file più piccoli, meno token alla ripresa.")
                     tool("folder.badge.gearshape", "Sposta", "Porta la chat in un'area di lavoro o in un progetto: da lì la ritrovi con /resume.")
-                    tool("tag", "Contesto", "Personale o Studiogusto, indipendente dall'account usato.")
+                    tool("tag", "Contesto", "Raggruppa le chat per ambito (es. personale, lavoro), indipendente dall'account usato.")
                 }
             }
             .padding(28)

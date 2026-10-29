@@ -100,7 +100,7 @@ struct ComposeView: View {
                     .font(.headline)
                 ZStack(alignment: .topLeading) {
                     if request.isEmpty {
-                        Text("Es. “Aggiungi a rilegato.com il calcolo delle spedizioni a peso, come avevamo deciso”")
+                        Text("Es. “Sul sito del cliente aggiungi il calcolo delle spedizioni a peso, come avevamo deciso la settimana scorsa”")
                             .foregroundStyle(.tertiary)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 8)

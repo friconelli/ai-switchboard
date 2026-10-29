@@ -396,10 +396,11 @@ private struct MultiSelectionView: View {
                     subtitle: "\(formatBytes(chats.reduce(0) { $0 + $1.sizeBytes })) in tutto. Scegli cosa farne:"
                 ) { EmptyView() }
 
-                HStack(spacing: 8) {
-                    Button { actions.merge(chats) } label: { Label("Unisci in una chat", systemImage: "arrow.triangle.merge") }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8, alignment: .leading)], alignment: .leading, spacing: 8) {
+                    Button { actions.merge(chats) } label: { Label("Unisci", systemImage: "arrow.triangle.merge") }
                         .prominentButton()
                         .tint(Theme.coral)
+                        .help("Unisci in una sola chat")
                     ToolButton(title: "Snellisci", symbol: "arrow.down.right.and.arrow.up.left") { actions.slim(chats) }
                     ToolButton(title: "Sposta", symbol: "folder.badge.gearshape") { actions.move(chats) }
                     Menu {

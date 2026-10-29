@@ -255,6 +255,19 @@ final class DeckStore: ObservableObject {
         }
     }
 
+    func reloadAccounts() {
+        let fresh = AccountScanner.accounts()
+        if fresh.map(\.id) != accounts.map(\.id) || fresh.map(\.email) != accounts.map(\.email) {
+            accounts = fresh
+            sessionAccounts = AccountScanner.sessionAccounts(accounts)
+        }
+    }
+
+    /// Opens Claude with that configuration folder, which asks to log in when needed.
+    func login(configDir: URL) {
+        handle(Launcher.run(AccountSetup.loginCommand(for: configDir), in: ClaudePaths.home.path))
+    }
+
     func setDirectLaunch(_ enabled: Bool) {
         do {
             if enabled { try ShellHook.install() } else { try ShellHook.uninstall() }

@@ -14,9 +14,15 @@ struct AccountsView: View {
                     symbol: "person.2.fill",
                     tint: .blue,
                     title: "Account",
-                    subtitle: "Ogni account è una cartella di configurazione di Claude Code. Le chat sono condivise: puoi riprendere con un account quelle iniziate con l'altro."
+                    subtitle: "Ogni account è una cartella di configurazione di Claude Code. Con lo storico condiviso puoi riprendere con un account le chat iniziate con un altro."
                 ) {
-                    EmptyView()
+                    Button {
+                        NotificationCenter.default.post(name: .showOnboarding, object: nil)
+                    } label: {
+                        Label("Configurazione guidata…", systemImage: "wand.and.stars")
+                    }
+                    .secondaryButton()
+                    .help("Aggiungi account, cambia cartelle, contesti e aree")
                 }
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 16)], spacing: 16) {
@@ -27,6 +33,7 @@ struct AccountsView: View {
 
                 directLaunchCard
                 descriptionsCard
+                UpdatesCard()
 
                 if let defaultAccount {
                     Card {
@@ -216,6 +223,61 @@ struct AccountsView: View {
         panel.directoryURL = ClaudePaths.home.appendingPathComponent("projects")
         if panel.runModal() == .OK, let url = panel.url {
             store.newChat(in: url.path, with: account)
+        }
+    }
+}
+
+extension Notification.Name {
+    static let showOnboarding = Notification.Name("AISwitchboard.showOnboarding")
+}
+
+struct UpdatesCard: View {
+    @ObservedObject private var updater = Updater.shared
+
+    var body: some View {
+        Card {
+            HStack(alignment: .top, spacing: 12) {
+                IconTile(symbol: "arrow.down.circle.fill", tint: .green, size: 36)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Aggiornamenti").font(.headline)
+                    Text("Versione installata \(updater.currentVersion). \(status)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if updater.updateAvailable, let latest = updater.latest, !latest.notes.isEmpty {
+                        Text(latest.notes)
+                            .font(.caption)
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    Toggle("Controlla automaticamente all'avvio", isOn: Binding(get: { updater.autoCheck }, set: { updater.autoCheck = $0 }))
+                        .font(.callout)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 6) {
+                    if updater.updateAvailable {
+                        Button("Aggiorna e riavvia") { Task { await updater.install() } }
+                            .prominentButton()
+                            .tint(Theme.coral)
+                    }
+                    Button("Controlla ora") { Task { await updater.check() } }
+                        .secondaryButton()
+                        .disabled(updater.state == .checking)
+                }
+            }
+        }
+    }
+
+    private var status: String {
+        switch updater.state {
+        case .idle: return updater.lastCheck.map { "Ultimo controllo \(relative($0))." } ?? ""
+        case .checking: return "Controllo in corso…"
+        case .upToDate: return "È l'ultima versione."
+        case .available: return "Disponibile la versione \(updater.latest?.version ?? "")."
+        case .downloading: return "Scarico l'aggiornamento…"
+        case .installing: return "Installo…"
+        case .failed(let message): return message
         }
     }
 }

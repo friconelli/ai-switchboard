@@ -12,17 +12,19 @@ enum Theme {
     static let cardRadius: CGFloat = 16
 
     static func color(forContext context: String) -> Color {
-        switch context {
-        case "Personale": return .pink
-        case "Studiogusto": return .indigo
-        default: return .teal
+        switch context.lowercased() {
+        case "personale", "personal": return .pink
+        case "lavoro", "work", "studiogusto": return .indigo
+        default:
+            let palette: [Color] = [.teal, .orange, .green, .purple, .blue, .mint, .brown]
+            return palette[context.unicodeScalars.reduce(0) { $0 + Int($1.value) } % palette.count]
         }
     }
 
     static func symbol(forContext context: String) -> String {
-        switch context {
-        case "Personale": return "person.fill"
-        case "Studiogusto": return "building.2.fill"
+        switch context.lowercased() {
+        case "personale", "personal": return "person.fill"
+        case "lavoro", "work", "studiogusto": return "building.2.fill"
         default: return "square.stack.fill"
         }
     }

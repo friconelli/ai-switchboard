@@ -1,6 +1,20 @@
 # AI Switchboard
 
-App macOS (SwiftUI) per orchestrare Claude Code con più account (`claude-fede`, `claude-gusto`, …).
+App macOS (SwiftUI) per gestire le chat di Claude Code, anche con più account: cercarle, riprenderle, unirle, dividerle, snellirle, organizzarle in aree di lavoro e partire con chat già informate dallo storico.
+
+## Installazione
+
+1. Scarica `AISwitchboard.zip` dall'[ultima release](https://github.com/friconelli/ai-switchboard/releases/latest), aprilo e trascina **AISwitchboard.app** in Applicazioni.
+2. L'app non è firmata con un certificato Apple, quindi al primo avvio macOS la blocca: apri **Impostazioni di Sistema → Privacy e sicurezza** e, in fondo, premi **Apri comunque** accanto ad AISwitchboard (in alternativa, da Terminale: `xattr -dr com.apple.quarantine /Applications/AISwitchboard.app`). Serve solo la prima volta: gli aggiornamenti scaricati dall'app non lo richiedono.
+3. Al primo avvio la **configurazione guidata** chiede gli account Claude (quelli già presenti o nuovi, con login), le cartelle delle chat e dei progetti, i contesti e le prime aree di lavoro. Si riapre da Account → *Configurazione guidata…*.
+
+Requisiti: macOS 14+, [Claude Code](https://claude.com/claude-code) installato. [Warp](https://www.warp.dev) consigliato (altrimenti usa Terminale).
+
+## Aggiornamenti
+
+L'app controlla all'avvio (al massimo ogni 6 ore) l'ultima release su GitHub; se ce n'è una nuova lo segnala in fondo alla barra laterale. **Aggiorna e riavvia** scarica `AISwitchboard.zip`, verifica che sia AI Switchboard con la versione attesa, sostituisce l'app (la vecchia va nel Cestino) e la riapre. Controllo manuale da *AI Switchboard → Controlla aggiornamenti…* o dalla pagina Account, dove si può disattivare il controllo automatico.
+
+Per pubblicare una versione: `Scripts/release.sh 1.2.0 "Note di rilascio"` (imposta la versione, compila, crea lo zip e la release con `gh`).
 
 ## Funzionalità
 
@@ -20,7 +34,7 @@ App macOS (SwiftUI) per orchestrare Claude Code con più account (`claude-fede`,
 
 ## Contesti e aree di lavoro
 
-- **Contesti** (Personale, Studiogusto): indipendenti dagli account. Il contesto di una chat si ricava dalla sua cartella: le aree in `~/Chat AI/<contesto>/` appartengono a quel contesto, i progetti in `~/projects` hanno un contesto assegnabile (predefinito Studiogusto), il resto è “Da assegnare”. Si può forzare il contesto di singole chat.
+- **Contesti** (scelti nella configurazione guidata, es. Personale, Lavoro): indipendenti dagli account. Il contesto di una chat si ricava dalla sua cartella: le aree in `<cartella chat>/<contesto>/` appartengono a quel contesto, i progetti nella cartella dei progetti hanno un contesto assegnabile (con un predefinito facoltativo), il resto è “Da assegnare”. Si può forzare il contesto di singole chat.
 - **Aree di lavoro**: cartelle in `~/Chat AI/<contesto>/<area>` per le chat che non riguardano un repo, create dall'app con `CLAUDE.md`, `risorse/` e `output/`. Da qui si avviano nuove chat in Warp.
 - **Sposta in…**: sposta una o più chat in un'area o in un progetto. Riscrive come testo il `cwd` originale e i percorsi della cartella di supporto, verifica il risultato, sposta tutto in `~/.claude/projects/<cartella codificata>/` e manda l'originale nel Cestino (il nome codificato è il percorso con ogni carattere non alfanumerico sostituito da `-`).
 - **Memoria**: i file di memoria si spostano tra progetti/aree aggiornando entrambi i `MEMORY.md`.
@@ -29,7 +43,7 @@ Configurazione in `~/Library/Application Support/AISwitchboard/config.json`.
 
 ## Come trova gli account
 
-`~/.claude` (predefinito) più ogni `~/.claude-*` che contiene `.claude.json`. Lo storico è condiviso se `projects` è un symlink a `~/.claude/projects`.
+`~/.claude` (predefinito) più ogni `~/.claude-*` che contiene `.claude.json`. Lo storico è condiviso se `projects` è un symlink a `~/.claude/projects`: gli account aggiunti dalla configurazione guidata lo creano (opzione attiva di default), così l'app e `/resume` vedono le chat di tutti gli account. **Aggiungi account** crea `~/.claude-<nome>` e apre Claude in quella configurazione per il login; da terminale si usa con `CLAUDE_CONFIG_DIR=~/.claude-<nome> claude`.
 
 ## Warp
 

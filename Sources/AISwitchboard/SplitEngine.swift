@@ -158,7 +158,9 @@ enum SplitEngine {
                     .compactMap { $0["text"] as? String }
             }
             if line.type == "user", prompt.isEmpty, isPrompt(line) {
-                prompt = readablePrompt(texts.first(where: isPromptText) ?? "")
+                // IDE notes (<ide_opened_file>…) come before the words actually typed.
+                let typed = texts.first { isPromptText($0) && !$0.hasPrefix("<") } ?? texts.first(where: isPromptText) ?? ""
+                prompt = typed.hasPrefix("<command-name>") ? readablePrompt(typed) : cleanPromptText(typed)
             } else if line.type == "assistant" {
                 replies.append(contentsOf: texts)
             }

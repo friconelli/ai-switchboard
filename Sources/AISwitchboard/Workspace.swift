@@ -4,9 +4,10 @@ import Foundation
 struct SwitchboardConfig: Codable {
     var chatRoot: String = ClaudePaths.home.appendingPathComponent("Chat AI").path
     var projectsRoot: String = ClaudePaths.home.appendingPathComponent("projects").path
-    var contexts: [String] = ["Personale", "Studiogusto"]
+    /// Chosen by the user in the first-run setup; nothing is preset.
+    var contexts: [String] = []
     /// Context for code projects in `projectsRoot` that have no explicit assignment.
-    var defaultProjectContext: String? = "Studiogusto"
+    var defaultProjectContext: String?
     /// Explicit context per working directory (code projects or any other folder).
     var folderContexts: [String: String] = [:]
     /// Explicit context per chat, overriding its folder.
@@ -15,12 +16,20 @@ struct SwitchboardConfig: Codable {
     var useRecommendedModel: Bool?
     /// Let Claude (Haiku) write a short description of every chat; on unless switched off.
     var autoDescriptions: Bool?
+    /// False until the first-run setup is completed (nil in configs made before it existed).
+    var onboardingDone: Bool?
 
     private static var url: URL { ClaudePaths.appSupport.appendingPathComponent("config.json") }
 
     static func load() -> SwitchboardConfig {
         guard let data = try? Data(contentsOf: url),
-              let config = try? JSONDecoder().decode(SwitchboardConfig.self, from: data) else { return SwitchboardConfig() }
+              var config = try? JSONDecoder().decode(SwitchboardConfig.self, from: data) else {
+            var fresh = SwitchboardConfig()
+            fresh.onboardingDone = false
+            return fresh
+        }
+        // Configurations saved before the setup existed were made by hand: consider them done.
+        if config.onboardingDone == nil { config.onboardingDone = true }
         return config
     }
 

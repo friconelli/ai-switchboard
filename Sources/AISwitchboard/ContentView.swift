@@ -32,6 +32,8 @@ enum DeckSection: Hashable {
 
 struct ContentView: View {
     @StateObject private var store = DeckStore()
+    @ObservedObject private var updater = Updater.shared
+    @State private var showOnboarding = false
     @State private var section: DeckSection? = .chats(.all)
     @State private var focusedChatID: String?
 
@@ -74,6 +76,27 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 220)
             .safeAreaInset(edge: .bottom) {
+                if updater.updateAvailable, let latest = updater.latest {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Versione \(latest.version) disponibile", systemImage: "arrow.down.circle.fill")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(Theme.coral)
+                        HStack {
+                            Button(updater.state == .downloading || updater.state == .installing ? "Aggiorno…" : "Aggiorna e riavvia") {
+                                Task { await updater.install() }
+                            }
+                            .controlSize(.small)
+                            .disabled(updater.state == .downloading || updater.state == .installing)
+                            Button("Novità") { NSWorkspace.shared.open(latest.pageURL) }
+                                .buttonStyle(.link)
+                                .controlSize(.small)
+                        }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.coral.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+                    .padding(10)
+                }
                 if !store.isIndexing && store.describingRemaining > 0 {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
@@ -121,8 +144,18 @@ struct ContentView: View {
                 }
             }
         }
+        .sheet(isPresented: $showOnboarding) {
+            OnboardingView(store: store) { showOnboarding = false }
+                .interactiveDismissDisabled()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showOnboarding)) { _ in showOnboarding = true }
         .onAppear {
             store.start()
+            showOnboarding = store.config.onboardingDone == false || UserDefaults.standard.bool(forKey: "debugOnboarding")
+            updater.checkIfDue()
+            if UserDefaults.standard.bool(forKey: "debugInstallUpdate") {
+                Task { await updater.check(); await updater.install() }
+            }
             let defaults = UserDefaults.standard
             if let name = defaults.string(forKey: "debugSection"), let debug = DeckSection(debugName: name) { section = debug }
             if let id = defaults.string(forKey: "debugChat") {

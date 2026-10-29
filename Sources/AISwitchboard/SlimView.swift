@@ -195,14 +195,21 @@ struct SlimSheet: View {
         let keepSet = Set(SlimEngine.Category.allCases).subtracting([.compacted])
         let allSet = Set(SlimEngine.Category.allCases)
         for chat in chats {
+            let measured = store.usage[chat.id]?.lastContext ?? 0
             let partial: Estimate? = await Task.detached(priority: .userInitiated) {
                 guard let source = try? SlimEngine.analyze(chat) else { return nil }
+                // The character-based estimate runs high: when Claude Code recorded the real context
+                // size of the last request, use it and scale the savings to match.
+                let factor = measured > 0 && source.contextTokens > 0 ? min(1, Double(measured) / Double(source.contextTokens)) : 1
+                func scaled(_ savings: [SlimEngine.Category: SlimEngine.Saving]) -> [SlimEngine.Category: SlimEngine.Saving] {
+                    savings.mapValues { var saving = $0; saving.tokens = Int(Double(saving.tokens) * factor); return saving }
+                }
                 return Estimate(
                     size: source.sizeBytes,
-                    contextTokens: source.contextTokens,
+                    contextTokens: measured > 0 ? measured : source.contextTokens,
                     hasCompaction: source.hasCompaction,
-                    keepHistory: SlimEngine.plan(source, enabled: keepSet).savings,
-                    dropHistory: SlimEngine.plan(source, enabled: allSet).savings
+                    keepHistory: scaled(SlimEngine.plan(source, enabled: keepSet).savings),
+                    dropHistory: scaled(SlimEngine.plan(source, enabled: allSet).savings)
                 )
             }.value
             if let partial {
