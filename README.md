@@ -28,7 +28,9 @@ Configurazione in `~/Library/Application Support/AISwitchboard/config.json`.
 
 ## Warp
 
-Apre una scheda Warp nella cartella della chat e vi incolla il comando (serve il permesso Accessibilità per AI Switchboard; senza, il comando resta negli appunti). Senza Warp usa Terminale.
+Con **Apertura diretta** attiva (pagina Account) l'app aggiunge a `~/.zshrc` un blocco delimitato da `# >>> AI Switchboard >>>` (salvando prima una copia in `~/.ai-switchboard/zshrc.backup`). “Riprendi” e “Nuova chat” scrivono il comando in `~/.ai-switchboard/launch/<id>.zsh` con la cartella sulla prima riga e aprono una scheda Warp lì: al primo prompt il blocco esegue il comando di quella cartella (solo se più recente di 30 secondi, una volta per scheda). Disattivandola il blocco viene rimosso.
+
+Senza apertura diretta: incolla il comando nella scheda con ⌘V+Invio (serve il permesso Accessibilità) oppure lo lascia negli appunti. Senza Warp usa Terminale.
 
 ## Build
 

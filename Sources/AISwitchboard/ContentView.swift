@@ -80,8 +80,8 @@ struct ContentView: View {
             "Quasi fatto",
             isPresented: Binding(get: { store.noticeMessage != nil }, set: { if !$0 { store.noticeMessage = nil } })
         ) {
-            Button("Apri Accessibilità") {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+            if !store.directLaunchEnabled {
+                Button("Attiva apertura diretta") { store.setDirectLaunch(true) }
             }
             Button("OK", role: .cancel) {}
         } message: {

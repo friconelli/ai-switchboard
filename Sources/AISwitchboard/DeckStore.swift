@@ -18,6 +18,7 @@ final class DeckStore: ObservableObject {
     @Published var isSearchingContent = false
     @Published var errorMessage: String?
     @Published var noticeMessage: String?
+    @Published var directLaunchEnabled = ShellHook.isInstalled
 
     private let indexer = ChatIndexer()
     private var timer: Timer?
@@ -128,9 +129,18 @@ final class DeckStore: ObservableObject {
         handle(Launcher.newChat(in: directory, account: account))
     }
 
+    func setDirectLaunch(_ enabled: Bool) {
+        do {
+            if enabled { try ShellHook.install() } else { try ShellHook.uninstall() }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        directLaunchEnabled = ShellHook.isInstalled
+    }
+
     private func handle(_ outcome: Launcher.Outcome) {
         if case .copiedToClipboard(let command) = outcome {
-            noticeMessage = "Ho aperto una scheda Warp e copiato il comando negli appunti: incollalo con ⌘V e premi Invio.\n\n\(command)\n\nPer farlo in automatico, abilita AI Switchboard in Impostazioni di Sistema → Privacy e sicurezza → Accessibilità."
+            noticeMessage = "Ho aperto una scheda Warp e copiato il comando negli appunti: incollalo con ⌘V e premi Invio.\n\n\(command)\n\nPer aprire le chat direttamente attiva “Apertura diretta in Warp” nella pagina Account."
         }
     }
 

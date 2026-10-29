@@ -25,6 +25,8 @@ struct AccountsView: View {
                     }
                 }
 
+                directLaunchCard
+
                 if let defaultAccount {
                     Card {
                         HStack(spacing: 12) {
@@ -48,6 +50,28 @@ struct AccountsView: View {
             .padding(24)
         }
         .navigationTitle("Account")
+    }
+
+    private var directLaunchCard: some View {
+        Card {
+            HStack(alignment: .top, spacing: 12) {
+                IconTile(symbol: "terminal.fill", tint: .black, size: 36)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Apertura diretta in \(Launcher.terminalName)")
+                        .font(.headline)
+                    Text(store.directLaunchEnabled
+                         ? "Attiva: “Riprendi” e “Nuova chat” aprono una scheda e avviano Claude subito."
+                         : "Quando apri una chat, la nuova scheda avvia Claude da sola. Aggiunge a ~/.zshrc un piccolo blocco (delimitato da “AI Switchboard”) che al primo prompt esegue il comando preparato dall'app per quella cartella; prima salva una copia in ~/.ai-switchboard/zshrc.backup. Non serve il permesso di Accessibilità.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(get: { store.directLaunchEnabled }, set: { store.setDirectLaunch($0) }))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+        }
     }
 
     private func accountCard(_ account: ClaudeAccount) -> some View {
