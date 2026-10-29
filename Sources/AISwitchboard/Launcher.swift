@@ -25,13 +25,19 @@ enum Launcher {
     static var terminalName: String { warpURL != nil ? "Warp" : "Terminale" }
 
     @discardableResult
-    static func resume(_ session: ChatSession, account: ClaudeAccount) -> Outcome {
-        run("\(account.commandPrefix) --resume \(session.id)", in: session.workingDirectory)
+    static func resume(_ session: ChatSession, account: ClaudeAccount, model: String? = nil, prompt: String? = nil) -> Outcome {
+        let command = "\(account.commandPrefix)\(model.map { " --model \($0)" } ?? "") --resume \(session.id)"
+        return run(command + (prompt.map { " " + shellQuote($0) } ?? ""), in: session.workingDirectory)
     }
 
     @discardableResult
-    static func newChat(in directory: String, account: ClaudeAccount) -> Outcome {
-        run(account.commandPrefix, in: directory)
+    static func newChat(in directory: String, account: ClaudeAccount, model: String? = nil, prompt: String? = nil) -> Outcome {
+        run(account.commandPrefix + (model.map { " --model \($0)" } ?? "") + (prompt.map { " " + shellQuote($0) } ?? ""), in: directory)
+    }
+
+    /// Single-quoted for zsh.
+    static func shellQuote(_ text: String) -> String {
+        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     static func run(_ command: String, in directory: String) -> Outcome {

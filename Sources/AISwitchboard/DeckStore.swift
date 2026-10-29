@@ -25,8 +25,15 @@ final class DeckStore: ObservableObject {
     @Published var errorMessage: String?
     @Published var directLaunchEnabled = ShellHook.isInstalled
     @Published var pendingLaunch: PendingLaunch?
+    @Published var usage: [String: ChatUsage] = [:]
+    @Published var descriptions: [String: String] = [:]
+    @Published var describingRemaining = 0
+    @Published var isScanningUsage = false
 
     private let indexer = ChatIndexer()
+    private let usageScanner = UsageScanner()
+    private let descriptionCache = DescriptionCache()
+    private var isDescribing = false
     private var timer: Timer?
     private var searchTask: Process?
 
@@ -67,7 +74,88 @@ final class DeckStore: ObservableObject {
                 self.chats = result
                 self.isIndexing = false
                 self.indexProgress = 1
+                self.reloadUsage()
             }
+        }
+    }
+
+    func reloadUsage() {
+        guard !isScanningUsage else { return }
+        isScanningUsage = true
+        let scanner = usageScanner
+        let chats = chats
+        Task.detached(priority: .utility) {
+            let result = scanner.scan(chats)
+            await MainActor.run {
+                self.usage = result
+                self.isScanningUsage = false
+                self.refreshDescriptions()
+            }
+        }
+    }
+
+    // MARK: - Descriptions
+
+    var autoDescriptions: Bool {
+        get { config.autoDescriptions ?? true }
+        set {
+            config.autoDescriptions = newValue
+            config.save()
+            if newValue { refreshDescriptions() }
+        }
+    }
+
+    func description(for chat: ChatSession) -> String? {
+        descriptions[chat.id]
+    }
+
+    /// Writes missing or outdated descriptions in the background, most recent chats first,
+    /// five chats per request. `force` rewrites the given chats even if they have one.
+    func refreshDescriptions(force: [ChatSession] = []) {
+        descriptions = descriptionCache.entries.mapValues(\.text)
+        guard !isDescribing, autoDescriptions || !force.isEmpty else { return }
+        var queue = force + chats
+            .filter { descriptionCache.needsDescription($0) }
+            .sorted { $0.modifiedAt > $1.modifiedAt }
+        guard !queue.isEmpty else { return }
+        isDescribing = true
+        describingRemaining = queue.count
+        let account = preferredAccount
+        Task {
+            while !queue.isEmpty {
+                let batch = Array(queue.prefix(5))
+                queue.removeFirst(batch.count)
+                if let texts = try? await DescriptionWriter.describe(batch, account: account) {
+                    descriptionCache.store(texts, chats: batch)
+                    descriptions = descriptionCache.entries.mapValues(\.text)
+                }
+                describingRemaining = queue.count
+            }
+            isDescribing = false
+        }
+    }
+
+    // MARK: - Models
+
+    func recommendation(for chat: ChatSession) -> ModelAdvisor.Recommendation? {
+        usage[chat.id].flatMap { ModelAdvisor.recommend($0, prompts: chat.promptCount) }
+    }
+
+    /// Most frequent recommendation among the chats started in `folder`, weighted by responses.
+    func recommendedTier(forFolder folder: String) -> ModelTier? {
+        var votes: [ModelTier: Int] = [:]
+        for chat in chats where chat.workingDirectory == folder {
+            guard let usage = usage[chat.id], let tier = ModelAdvisor.recommend(usage, prompts: chat.promptCount)?.tier else { continue }
+            votes[tier, default: 0] += usage.responses
+        }
+        return votes.max { $0.value < $1.value }?.key
+    }
+
+    var useRecommendedModel: Bool {
+        get { config.useRecommendedModel ?? false }
+        set {
+            config.useRecommendedModel = newValue
+            config.save()
         }
     }
 
@@ -127,12 +215,44 @@ final class DeckStore: ObservableObject {
 
     // MARK: - Chat actions
 
-    func resume(_ chat: ChatSession, with account: ClaudeAccount) {
-        handle(Launcher.resume(chat, account: account))
+    /// `model` nil: the recommended one when that option is on, otherwise Claude Code's default.
+    func resume(_ chat: ChatSession, with account: ClaudeAccount, model: ModelTier? = nil) {
+        let tier = model ?? (useRecommendedModel ? recommendation(for: chat)?.tier : nil)
+        handle(Launcher.resume(chat, account: account, model: tier?.alias))
     }
 
     func newChat(in directory: String, with account: ClaudeAccount) {
-        handle(Launcher.newChat(in: directory, account: account))
+        let tier = useRecommendedModel ? recommendedTier(forFolder: directory) : nil
+        handle(Launcher.newChat(in: directory, account: account, model: tier?.alias))
+    }
+
+    /// Creates a chat that opens with `summary` and starts it with `request` as first message.
+    /// Without a summary it is a plain new chat in `folder`.
+    func startComposed(
+        title: String,
+        folder: String,
+        summary: String?,
+        sources: [ChatSession],
+        request: String,
+        sendRequest: Bool,
+        account: ClaudeAccount,
+        model: ModelTier?
+    ) -> ChatSession? {
+        let prompt = sendRequest ? request : nil
+        guard let summary else {
+            handle(Launcher.newChat(in: folder, account: account, model: model?.alias, prompt: prompt))
+            return nil
+        }
+        do {
+            let chat = try ComposeEngine.create(title: title, folder: folder, summary: summary, sourceTitles: sources.map(\.displayTitle))
+            if !account.isDefault { try? appendHistory(chat.id, cwd: folder, title: title, account: account) }
+            handle(Launcher.resume(chat, account: account, model: model?.alias, prompt: prompt))
+            reloadChats()
+            return chat
+        } catch {
+            errorMessage = "Non sono riuscito a creare la chat.\n\n\(error.localizedDescription)"
+            return nil
+        }
     }
 
     func setDirectLaunch(_ enabled: Bool) {

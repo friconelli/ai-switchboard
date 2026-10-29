@@ -11,6 +11,10 @@ struct SwitchboardConfig: Codable {
     var folderContexts: [String: String] = [:]
     /// Explicit context per chat, overriding its folder.
     var chatContexts: [String: String] = [:]
+    /// Start and resume chats with the model suggested by their history (optional for old configs).
+    var useRecommendedModel: Bool?
+    /// Let Claude (Haiku) write a short description of every chat; on unless switched off.
+    var autoDescriptions: Bool?
 
     private static var url: URL { ClaudePaths.appSupport.appendingPathComponent("config.json") }
 

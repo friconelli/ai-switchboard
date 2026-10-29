@@ -37,7 +37,8 @@ struct ChatsView: View {
             guard !query.isEmpty else { return true }
             if searchContent { return store.contentMatches?.contains(chat.id) ?? true }
             return chat.displayTitle.localizedCaseInsensitiveContains(query)
-                || (chat.firstPrompt?.localizedCaseInsensitiveContains(query) ?? false)
+                || (chat.preview?.localizedCaseInsensitiveContains(query) ?? false)
+                || (store.description(for: chat)?.localizedCaseInsensitiveContains(query) ?? false)
                 || chat.projectName.localizedCaseInsensitiveContains(query)
                 || chat.id.hasPrefix(query)
         }
@@ -135,7 +136,9 @@ struct ChatsView: View {
                             accounts: store.accounts(for: chat),
                             context: store.context(for: chat),
                             showContext: scope == .all,
-                            isActive: store.activeSessionIDs.contains(chat.id)
+                            isActive: store.activeSessionIDs.contains(chat.id),
+                            hasAdvice: ModelAdvisor.hasMajorIssue(chat, usage: store.usage[chat.id]),
+                            description: store.description(for: chat)
                         )
                         .tag(chat.id)
                         .contextMenu { contextMenu(for: chat) }
@@ -143,9 +146,6 @@ struct ChatsView: View {
                 }
                 .listStyle(.inset)
             }
-        }
-        .overlay(alignment: .bottom) {
-            if !selection.isEmpty { actionBar }
         }
     }
 
@@ -211,90 +211,15 @@ struct ChatsView: View {
         .padding(12)
     }
 
-    private var actionBar: some View {
-        ActionBar {
-            Text(selection.count == 1 ? "1 chat" : "\(selection.count) chat")
-                .font(.callout.weight(.semibold))
-
-            Spacer()
-
-            if selectedChats.count == 1, let chat = selectedChats.first {
-                resumeMenu(for: chat)
-                Button {
-                    renameTarget = chat
-                } label: {
-                    Image(systemName: "pencil")
-                }
-                .help("Rinomina")
-                .secondaryButton()
-                Button {
-                    splitTarget = chat
-                } label: {
-                    Image(systemName: "scissors")
-                }
-                .help("Dividi in più chat, una per argomento")
-                .secondaryButton()
-            }
-
-            if selectedChats.count >= 2 {
-                Button {
-                    mergeTargets = selectedChats
-                } label: {
-                    Label("Unisci", systemImage: "arrow.triangle.merge")
-                }
-                .prominentButton()
-                .tint(Theme.coral)
-            }
-
-            Button {
-                slimTargets = selectedChats
-            } label: {
-                Image(systemName: "arrow.down.right.and.arrow.up.left")
-            }
-            .help("Snellisci: togli dati tecnici, immagini e output temporanei")
-            .secondaryButton()
-
-            Button {
-                moveTargets = selectedChats
-            } label: {
-                Image(systemName: "folder.badge.gearshape")
-            }
-            .help("Sposta in un'area o in un progetto")
-            .secondaryButton()
-
-            contextMenuButton(for: selectedChats)
-
-            Button(role: .destructive) {
-                trashTargets = selectedChats
-            } label: {
-                Image(systemName: "trash")
-            }
-            .help("Sposta nel Cestino")
-            .secondaryButton()
-            .foregroundStyle(.red)
-        }
-        .padding(.horizontal, -12)
-    }
-
-    private func resumeMenu(for chat: ChatSession) -> some View {
-        Menu {
-            ForEach(store.accounts) { account in
-                Button {
-                    store.resume(chat, with: account)
-                } label: {
-                    Text("\(account.name)\(account.email.map { " — \($0)" } ?? "")")
-                }
-            }
-        } label: {
-            Label("Riprendi", systemImage: "play.fill")
-        } primaryAction: {
-            if let account = store.preferredAccount { store.resume(chat, with: account) }
-        }
-        .menuStyle(.button)
-        .prominentButton()
-        .tint(Theme.coral)
-        .fixedSize()
-        .help("Riprendi in \(Launcher.terminalName) con \(store.preferredAccount?.name ?? "l'account predefinito") (freccia per scegliere)")
+    private var actions: ChatActions {
+        ChatActions(
+            rename: { renameTarget = $0 },
+            split: { splitTarget = $0 },
+            slim: { slimTargets = $0 },
+            move: { moveTargets = $0 },
+            merge: { mergeTargets = $0 },
+            trash: { trashTargets = $0 }
+        )
     }
 
     @ViewBuilder
@@ -308,6 +233,7 @@ struct ChatsView: View {
             }
             Button("Rinomina…") { renameTarget = chat }
             Button("Dividi in argomenti…") { splitTarget = chat }
+            Button("Rigenera descrizione") { store.refreshDescriptions(force: [chat]) }
             Button("Mostra nel Finder") { NSWorkspace.shared.activateFileViewerSelecting([chat.fileURL]) }
             Button("Copia ID sessione") {
                 NSPasteboard.general.clearContents()
@@ -333,18 +259,6 @@ struct ChatsView: View {
         Button("Automatico (dalla cartella)") { store.setContext(nil, for: targets) }
     }
 
-    private func contextMenuButton(for targets: [ChatSession]) -> some View {
-        Menu {
-            contextItems(for: targets)
-        } label: {
-            Image(systemName: "tag")
-        }
-        .menuStyle(.button)
-        .secondaryButton()
-        .fixedSize()
-        .help("Assegna a un contesto")
-    }
-
     private var scopeTitle: String {
         switch scope {
         case .all: return "Tutte le chat"
@@ -358,18 +272,12 @@ struct ChatsView: View {
     @ViewBuilder
     private var detailPane: some View {
         if selectedChats.count == 1, let chat = selectedChats.first {
-            TranscriptView(store: store, chat: chat)
+            TranscriptView(store: store, chat: chat, actions: actions)
                 .id(chat.id)
         } else if selectedChats.count > 1 {
-            MultiSelectionView(chats: selectedChats) {
-                mergeTargets = selectedChats
-            }
+            MultiSelectionView(store: store, chats: selectedChats, actions: actions)
         } else {
-            EmptyStateView(
-                symbol: "text.bubble",
-                title: "Seleziona una chat",
-                message: "⌘-clic per selezionarne più di una e unirle, ⌘A per snellirle tutte."
-            )
+            ToolsGuideView()
         }
     }
 
@@ -415,9 +323,11 @@ private struct ChatRow: View {
     let context: String?
     let showContext: Bool
     let isActive: Bool
+    let hasAdvice: Bool
+    let description: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 if isActive {
                     StatusDot(busy: false)
@@ -426,44 +336,55 @@ private struct ChatRow: View {
                 Text(chat.displayTitle)
                     .font(.headline)
                     .lineLimit(1)
+                if hasAdvice {
+                    Image(systemName: "lightbulb.fill")
+                        .font(.caption)
+                        .foregroundStyle(.yellow)
+                        .help("Chat pesante: aprila per vedere come alleggerirla")
+                }
                 Spacer(minLength: 4)
                 Text(relative(chat.modifiedAt))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if let prompt = chat.firstPrompt, chat.title != nil {
-                Text(prompt)
+            if let description {
+                Text(description)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+            } else if let preview = chat.preview, chat.title != nil {
+                Text(preview)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             HStack(spacing: 6) {
-                Label(chat.projectName, systemImage: "folder.fill")
-                    .labelStyle(.titleAndIcon)
+                Label(chat.projectName, systemImage: "folder")
                     .font(.caption)
-                    .foregroundStyle(Theme.coral)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
-                ForEach(accounts) { account in
-                    AccountBadge(account: account, compact: true)
-                }
                 if showContext || context == nil {
                     ContextBadge(context: context)
                 }
+                ForEach(accounts) { account in
+                    AccountBadge(account: account, compact: true)
+                }
                 Spacer()
-                Text("\(chat.promptCount) msg · \(formatBytes(chat.sizeBytes))")
+                Text(formatBytes(chat.sizeBytes))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, 4)
     }
 }
 
 // MARK: - Multi selection
 
 private struct MultiSelectionView: View {
+    @ObservedObject var store: DeckStore
     let chats: [ChatSession]
-    let onMerge: () -> Void
+    let actions: ChatActions
 
     var body: some View {
         ScrollView {
@@ -472,15 +393,31 @@ private struct MultiSelectionView: View {
                     symbol: "square.stack.fill",
                     tint: Theme.coral,
                     title: "\(chats.count) chat selezionate",
-                    subtitle: "Puoi unirle in un'unica conversazione da riprendere con Claude. Dopo l'unione le chat originali vanno nel Cestino e resta solo quella unita."
-                ) {
-                    Button(action: onMerge) {
-                        Label("Unisci", systemImage: "arrow.triangle.merge")
+                    subtitle: "\(formatBytes(chats.reduce(0) { $0 + $1.sizeBytes })) in tutto. Scegli cosa farne:"
+                ) { EmptyView() }
+
+                HStack(spacing: 8) {
+                    Button { actions.merge(chats) } label: { Label("Unisci in una chat", systemImage: "arrow.triangle.merge") }
+                        .prominentButton()
+                        .tint(Theme.coral)
+                    ToolButton(title: "Snellisci", symbol: "arrow.down.right.and.arrow.up.left") { actions.slim(chats) }
+                    ToolButton(title: "Sposta", symbol: "folder.badge.gearshape") { actions.move(chats) }
+                    Menu {
+                        ForEach(store.config.contexts, id: \.self) { context in
+                            Button(context) { store.setContext(context, for: chats) }
+                        }
+                        Divider()
+                        Button("Automatico (dalla cartella)") { store.setContext(nil, for: chats) }
+                    } label: {
+                        Label("Contesto", systemImage: "tag")
                     }
-                    .prominentButton()
-                    .tint(Theme.coral)
-                    .controlSize(.large)
+                    .menuStyle(.button)
+                    .secondaryButton()
+                    .fixedSize()
+                    ToolButton(title: "Cestino", symbol: "trash", role: .destructive) { actions.trash(chats) }
                 }
+                .controlSize(.large)
+
                 Card(padding: 6) {
                     VStack(spacing: 0) {
                         ForEach(chats.sorted { ($0.startedAt ?? $0.modifiedAt) < ($1.startedAt ?? $1.modifiedAt) }) { chat in

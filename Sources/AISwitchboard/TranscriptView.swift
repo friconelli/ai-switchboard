@@ -4,6 +4,7 @@ import AppKit
 struct TranscriptView: View {
     @ObservedObject var store: DeckStore
     let chat: ChatSession
+    let actions: ChatActions
 
     @State private var messages: [TranscriptMessage] = []
     @State private var truncated = false
@@ -53,57 +54,79 @@ struct TranscriptView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(chat.displayTitle)
-                    .font(.title3.bold())
-                    .lineLimit(2)
-                HStack(spacing: 8) {
-                    Label(chat.workingDirectory.replacingOccurrences(of: ClaudePaths.home.path, with: "~"), systemImage: "folder")
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    ForEach(store.accounts(for: chat)) { account in
-                        AccountBadge(account: account)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(chat.displayTitle)
+                        .font(.title2.bold())
+                        .lineLimit(2)
+                    if let description = store.description(for: chat) {
+                        Text(description)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                HStack(spacing: 10) {
-                    Text("\(chat.promptCount) messaggi")
-                    Text(formatBytes(chat.sizeBytes))
-                    if let started = chat.startedAt {
-                        Text("iniziata \(started.formatted(date: .abbreviated, time: .shortened))")
+                    HStack(spacing: 8) {
+                        Label(chat.workingDirectory.replacingOccurrences(of: ClaudePaths.home.path, with: "~"), systemImage: "folder")
                             .lineLimit(1)
+                            .truncationMode(.middle)
+                        ContextBadge(context: store.context(for: chat))
+                        ForEach(store.accounts(for: chat)) { account in
+                            AccountBadge(account: account, compact: true)
+                        }
                     }
-                    Button {
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    HStack(spacing: 10) {
+                        Text("\(chat.promptCount) messaggi tuoi")
+                        Text(formatBytes(chat.sizeBytes))
+                        if let started = chat.startedAt {
+                            Text("iniziata \(started.formatted(date: .abbreviated, time: .shortened))")
+                                .lineLimit(1)
+                        }
+                    }
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                ResumeButton(store: store, chat: chat, large: true)
+            }
+
+            HStack(spacing: 8) {
+                ToolButton(title: "Dividi", symbol: "scissors") { actions.split(chat) }
+                    .help("Dividi in più chat, una per argomento")
+                ToolButton(title: "Snellisci", symbol: "arrow.down.right.and.arrow.up.left") { actions.slim([chat]) }
+                    .help("Togli dati tecnici, immagini e output temporanei")
+                ToolButton(title: "Sposta", symbol: "folder.badge.gearshape") { actions.move([chat]) }
+                    .help("Sposta in un'area di lavoro o in un progetto")
+                ToolButton(title: "Rinomina", symbol: "pencil") { actions.rename(chat) }
+                Menu {
+                    Menu("Contesto") {
+                        ForEach(store.config.contexts, id: \.self) { context in
+                            Button(context) { store.setContext(context, for: [chat]) }
+                        }
+                        Divider()
+                        Button("Automatico (dalla cartella)") { store.setContext(nil, for: [chat]) }
+                    }
+                    Button("Mostra nel Finder") { NSWorkspace.shared.activateFileViewerSelecting([chat.fileURL]) }
+                    Button("Copia ID sessione") {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(chat.id, forType: .string)
-                    } label: {
-                        Label(String(chat.id.prefix(8)), systemImage: "doc.on.doc")
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.tertiary)
-                    .help("Copia ID sessione \(chat.id)")
+                    Divider()
+                    Button("Sposta nel Cestino…", role: .destructive) { actions.trash([chat]) }
+                } label: {
+                    Label("Altro", systemImage: "ellipsis.circle")
                 }
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .secondaryButton()
+                .fixedSize()
+                Spacer()
             }
-            Spacer()
-            Menu {
-                ForEach(store.accounts) { account in
-                    Button("\(account.name)\(account.email.map { " — \($0)" } ?? "")") {
-                        store.resume(chat, with: account)
-                    }
-                }
-            } label: {
-                Label("Riprendi", systemImage: "play.fill")
-            } primaryAction: {
-                if let account = store.preferredAccount { store.resume(chat, with: account) }
-            }
-            .menuStyle(.button)
-            .prominentButton()
-            .tint(Theme.coral)
-            .fixedSize()
+            .controlSize(.small)
+
+            ChatHealthView(store: store, chat: chat, actions: actions)
         }
         .padding(16)
     }

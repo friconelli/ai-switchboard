@@ -12,7 +12,7 @@ final class ChatIndexer {
 
     private var cache: [String: CacheEntry] = [:]
     // Bump the version when indexing rules change, so every transcript is re-indexed.
-    private let cacheURL = ClaudePaths.appSupport.appendingPathComponent("index-cache-v2.json")
+    private let cacheURL = ClaudePaths.appSupport.appendingPathComponent("index-cache-v3.json")
 
     init() {
         if let data = try? Data(contentsOf: cacheURL),
@@ -77,6 +77,8 @@ final class ChatIndexer {
     private static let continuedPrefix = "This session is being continued from a previous conversation"
     private static let metaNeedle = Array(#""isMeta":true"#.utf8)
     private static let sidechainNeedle = Array(#""isSidechain":true"#.utf8)
+    private static let textBlockNeedle = Array(#""type":"text""#.utf8)
+    private static let toolResultNeedle = Array(#""tool_result""#.utf8)
 
     static func index(file: URL, projectDir: String, size: Int64, modified: Date) -> ChatSession? {
         guard let data = try? Data(contentsOf: file, options: .alwaysMapped) else { return nil }
@@ -109,16 +111,22 @@ final class ChatIndexer {
                 if session.startedAt == nil, let ts = stringValue(after: timestampNeedle, in: line, length) {
                     session.startedAt = isoFormatter.date(from: ts)
                 }
+                // A prompt is a plain string, or text blocks (pasted images, IDE messages) that are not tool results.
+                let isText = contains(line, length, promptNeedle) || contains(line, length, promptNeedleReordered)
+                let isBlocks = !isText && contains(line, length, textBlockNeedle) && !contains(line, length, toolResultNeedle)
                 guard contains(line, length, userTypeNeedle),
-                      contains(line, length, promptNeedle) || contains(line, length, promptNeedleReordered),
+                      isText || isBlocks,
                       !contains(line, length, metaNeedle),
                       !contains(line, length, sidechainNeedle) else { return }
                 session.promptCount += 1
-                if session.firstPrompt == nil,
-                   let message = decode(line, length)?["message"] as? [String: Any],
-                   let content = message["content"] as? String,
-                   !content.hasPrefix("<"),
-                   !content.hasPrefix(continuedPrefix) {
+                guard session.firstPrompt == nil, let message = decode(line, length)?["message"] as? [String: Any] else { return }
+                let texts: [String]
+                if let content = message["content"] as? String {
+                    texts = [content]
+                } else {
+                    texts = (message["content"] as? [[String: Any]] ?? []).compactMap { $0["text"] as? String }
+                }
+                if let content = texts.first(where: { !$0.hasPrefix("<") && !$0.hasPrefix(continuedPrefix) && !$0.isEmpty }) {
                     session.firstPrompt = String(content.prefix(300))
                         .replacingOccurrences(of: "\n", with: " ")
                 }

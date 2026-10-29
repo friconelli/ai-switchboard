@@ -26,6 +26,7 @@ struct AccountsView: View {
                 }
 
                 directLaunchCard
+                descriptionsCard
 
                 if let defaultAccount {
                     Card {
@@ -50,6 +51,26 @@ struct AccountsView: View {
             .padding(24)
         }
         .navigationTitle("Account")
+    }
+
+    private var descriptionsCard: some View {
+        Card {
+            HStack(alignment: .top, spacing: 12) {
+                IconTile(symbol: "text.quote", tint: Theme.coral, size: 36)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Descrizioni delle chat")
+                        .font(.headline)
+                    Text("Claude (Haiku, con l'account \(store.preferredAccount?.name ?? "predefinito")) scrive una o due frasi su cosa contiene ogni chat e a che punto è. Vengono aggiornate quando la chat cresce; consumo minimo.\(store.describingRemaining > 0 ? " In corso: \(store.describingRemaining) chat da descrivere." : "")")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(get: { store.autoDescriptions }, set: { store.autoDescriptions = $0 }))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+        }
     }
 
     private var directLaunchCard: some View {

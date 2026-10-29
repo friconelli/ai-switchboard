@@ -48,8 +48,15 @@ struct ChatSession: Identifiable, Hashable, Codable {
 
     var displayTitle: String {
         if let title, !title.isEmpty { return title }
-        if let firstPrompt, !firstPrompt.isEmpty { return firstPrompt }
+        if let preview { return preview }
         return "Chat senza titolo"
+    }
+
+    /// First prompt without markup (pasted blocks, commands, reminders).
+    var preview: String? {
+        guard let firstPrompt else { return nil }
+        let clean = cleanPromptText(firstPrompt)
+        return clean.isEmpty ? nil : clean
     }
 
     var projectName: String {
@@ -100,6 +107,14 @@ struct MemoryFile: Identifiable, Hashable {
     let sizeBytes: Int64
 
     var isIndex: Bool { url.lastPathComponent == "MEMORY.md" }
+}
+
+/// Turns prompt markup into readable text: pasted blocks become "📋", other tags disappear.
+func cleanPromptText(_ text: String) -> String {
+    var result = text.replacingOccurrences(of: #"<pasted_content[^>]*>"#, with: "📋 ", options: .regularExpression)
+    result = result.replacingOccurrences(of: #"</?[a-zA-Z][a-zA-Z0-9_-]*(\s[^>]*)?>"#, with: " ", options: .regularExpression)
+    result = result.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+    return result.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 let isoFormatter: ISO8601DateFormatter = {

@@ -42,11 +42,11 @@ struct AccountBadge: View {
 
     var body: some View {
         let color = Theme.color(forAccount: account.name)
-        Text(compact ? String(account.name.prefix(1)).uppercased() : account.name)
-            .font(.caption2.weight(.bold))
-            .padding(.horizontal, compact ? 0 : 7)
-            .frame(minWidth: compact ? 18 : nil, minHeight: compact ? 18 : nil)
-            .padding(.vertical, compact ? 0 : 2)
+        Label(account.name, systemImage: "person.crop.circle")
+            .labelStyle(.titleAndIcon)
+            .font(compact ? .caption2.weight(.semibold) : .caption.weight(.semibold))
+            .padding(.horizontal, compact ? 5 : 7)
+            .padding(.vertical, compact ? 1 : 2)
             .background(color.opacity(0.16), in: Capsule())
             .foregroundStyle(color)
             .help(account.email ?? account.name)

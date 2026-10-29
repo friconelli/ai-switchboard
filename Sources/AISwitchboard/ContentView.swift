@@ -12,6 +12,22 @@ enum DeckSection: Hashable {
     case active
     case accounts
     case memory
+    case insights
+    case compose
+
+    /// For launching on a given page (`-debugSection insights`), used for screenshots.
+    init?(debugName: String) {
+        switch debugName {
+        case "compose": self = .compose
+        case "insights": self = .insights
+        case "areas": self = .areas
+        case "active": self = .active
+        case "accounts": self = .accounts
+        case "memory": self = .memory
+        case "chats": self = .chats(.all)
+        default: return nil
+        }
+    }
 }
 
 struct ContentView: View {
@@ -22,6 +38,9 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $section) {
+                row("Nuova chat guidata", symbol: "sparkles", tint: Theme.coral)
+                    .tag(DeckSection.compose)
+
                 Section("Chat") {
                     row("Tutte", symbol: "bubble.left.and.bubble.right.fill", tint: Theme.coral, count: store.chats.count)
                         .tag(DeckSection.chats(.all))
@@ -30,23 +49,40 @@ struct ContentView: View {
                             count: store.chats.filter { store.context(for: $0) == context }.count)
                             .tag(DeckSection.chats(.context(context)))
                     }
-                    row("Da assegnare", symbol: "tray.fill", tint: .gray,
-                        count: store.chats.filter { store.context(for: $0) == nil }.count)
+                    let unassigned = store.chats.filter { store.context(for: $0) == nil }.count
+                    row("Da assegnare", symbol: "tray.fill", tint: .gray, count: unassigned, highlight: unassigned > 0 ? .gray : nil)
                         .tag(DeckSection.chats(.unassigned))
                 }
-                Section("Gestione") {
-                row("Aree di lavoro", symbol: "folder.fill", tint: .orange, count: store.areas.count)
-                    .tag(DeckSection.areas)
-                row("Sessioni attive", symbol: "bolt.horizontal.fill", tint: .green, count: store.activeSessions.count)
-                    .tag(DeckSection.active)
-                row("Account", symbol: "person.2.fill", tint: .blue, count: store.accounts.filter { !$0.isDefault }.count)
-                    .tag(DeckSection.accounts)
-                row("Memoria", symbol: "brain.head.profile", tint: .purple, count: store.memoryFiles.count)
-                    .tag(DeckSection.memory)
+                Section("Organizza") {
+                    let advice = store.chats.filter { ModelAdvisor.hasMajorIssue($0, usage: store.usage[$0.id]) }.count
+                    row("Consigli", symbol: "lightbulb.fill", tint: .yellow, count: advice, highlight: advice > 0 ? .orange : nil)
+                        .tag(DeckSection.insights)
+                        .help("Chat da snellire o dividere e modello giusto per ogni lavoro")
+                    row("Aree di lavoro", symbol: "folder.fill", tint: .orange)
+                        .tag(DeckSection.areas)
+                        .help("Cartelle da cui far partire le chat, per contesto")
+                    row("Memoria", symbol: "brain.head.profile", tint: .purple, count: store.memoryFiles.count)
+                        .tag(DeckSection.memory)
+                }
+                Section("Sistema") {
+                    row("Sessioni attive", symbol: "bolt.horizontal.fill", tint: .green, count: store.activeSessions.count,
+                        highlight: store.activeSessions.isEmpty ? nil : .green)
+                        .tag(DeckSection.active)
+                    row("Account", symbol: "person.2.fill", tint: .blue, count: store.accounts.filter { !$0.isDefault }.count)
+                        .tag(DeckSection.accounts)
                 }
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 220)
             .safeAreaInset(edge: .bottom) {
+                if !store.isIndexing && store.describingRemaining > 0 {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text("Descrivo le chat… \(store.describingRemaining)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                }
                 if store.isIndexing {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Indicizzazione chat…")
@@ -73,9 +109,26 @@ struct ContentView: View {
                 AccountsView(store: store)
             case .memory:
                 MemoryView(store: store)
+            case .insights:
+                InsightsView(store: store) { id in
+                    focusedChatID = id
+                    section = .chats(.all)
+                }
+            case .compose:
+                ComposeView(store: store) { id in
+                    focusedChatID = id
+                    section = .chats(.all)
+                }
             }
         }
-        .onAppear { store.start() }
+        .onAppear {
+            store.start()
+            let defaults = UserDefaults.standard
+            if let name = defaults.string(forKey: "debugSection"), let debug = DeckSection(debugName: name) { section = debug }
+            if let id = defaults.string(forKey: "debugChat") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { focusedChatID = id }
+            }
+        }
         .alert(
             "Aprire le chat direttamente in \(Launcher.terminalName)?",
             isPresented: Binding(get: { store.pendingLaunch != nil }, set: { if !$0 { store.pendingLaunch = nil } }),
@@ -100,14 +153,25 @@ struct ContentView: View {
         }
     }
 
-    private func row(_ title: String, symbol: String, tint: Color, count: Int) -> some View {
+    private func row(_ title: String, symbol: String, tint: Color, count: Int? = nil, highlight: Color? = nil) -> some View {
         HStack(spacing: 10) {
             IconTile(symbol: symbol, tint: tint, size: 24)
             Text(title)
             Spacer()
-            Text("\(count)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+            if let count {
+                if let highlight {
+                    Text("\(count)")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(highlight.opacity(0.18), in: Capsule())
+                        .foregroundStyle(highlight)
+                } else {
+                    Text("\(count)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .padding(.vertical, 3)
     }

@@ -258,49 +258,15 @@ enum SplitEngine {
         let chat = source.chat
         var records: [[String: Any]] = []
         var previous: String?
-        let now = isoFormatter.string(from: Date())
-
         if let summary = topic.summary?.trimmingCharacters(in: .whitespacesAndNewlines), !summary.isEmpty {
-            let boundaryID = UUID().uuidString.lowercased()
-            let summaryID = UUID().uuidString.lowercased()
-            records.append([
-                "parentUuid": NSNull(),
-                "isSidechain": false,
-                "type": "system",
-                "subtype": "compact_boundary",
-                "content": "Conversation compacted",
-                "isMeta": false,
-                "timestamp": now,
-                "uuid": boundaryID,
-                "level": "info",
-                "compactMetadata": ["trigger": "manual", "preTokens": 0],
-                "userType": "external",
-                "cwd": topic.folder,
-                "sessionId": newID,
-            ])
-            records.append([
-                "parentUuid": boundaryID,
-                "isSidechain": false,
-                "type": "user",
-                "message": [
-                    "role": "user",
-                    "content": """
-                    This session is being continued from a previous conversation that was split by topic in AI Switchboard. \
-                    The original conversation was “\(chat.displayTitle)”; this chat keeps only the part about “\(topic.title)”. \
-                    The summary below covers the context from the original conversation that matters for this topic.
-
-                    \(summary)
-                    """,
-                ],
-                "isVisibleInTranscriptOnly": true,
-                "isCompactSummary": true,
-                "uuid": summaryID,
-                "timestamp": now,
-                "userType": "external",
-                "cwd": topic.folder,
-                "sessionId": newID,
-            ])
-            previous = summaryID
+            let intro = """
+            This session is being continued from a previous conversation that was split by topic in AI Switchboard. \
+            The original conversation was “\(chat.displayTitle)”; this chat keeps only the part about “\(topic.title)”. \
+            The summary below covers the context from the original conversation that matters for this topic.
+            """
+            let opening = summaryRecords(intro: intro, summary: summary, folder: topic.folder, sessionID: newID)
+            records = opening.records
+            previous = opening.lastUUID
         }
 
         var included: Set<String> = []
@@ -324,6 +290,45 @@ enum SplitEngine {
             records.append(json)
         }
         return records
+    }
+
+    /// Opening of a chat that starts from a summary, in the format Claude Code writes after a
+    /// compaction: a boundary (the chain root) and the summary as a user message.
+    static func summaryRecords(intro: String, summary: String, folder: String, sessionID: String) -> (records: [[String: Any]], lastUUID: String) {
+        let now = isoFormatter.string(from: Date())
+        let boundaryID = UUID().uuidString.lowercased()
+        let summaryID = UUID().uuidString.lowercased()
+        let records: [[String: Any]] = [
+            [
+                "parentUuid": NSNull(),
+                "isSidechain": false,
+                "type": "system",
+                "subtype": "compact_boundary",
+                "content": "Conversation compacted",
+                "isMeta": false,
+                "timestamp": now,
+                "uuid": boundaryID,
+                "level": "info",
+                "compactMetadata": ["trigger": "manual", "preTokens": 0],
+                "userType": "external",
+                "cwd": folder,
+                "sessionId": sessionID,
+            ],
+            [
+                "parentUuid": boundaryID,
+                "isSidechain": false,
+                "type": "user",
+                "message": ["role": "user", "content": "\(intro)\n\n\(summary)"],
+                "isVisibleInTranscriptOnly": true,
+                "isCompactSummary": true,
+                "uuid": summaryID,
+                "timestamp": now,
+                "userType": "external",
+                "cwd": folder,
+                "sessionId": sessionID,
+            ],
+        ]
+        return (records, summaryID)
     }
 
     /// The line with side-folder paths pointing to the new chat's folder.
