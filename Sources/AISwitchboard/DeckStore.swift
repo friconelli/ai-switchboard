@@ -1,6 +1,12 @@
 import Foundation
 import AppKit
 
+struct PendingLaunch: Identifiable {
+    let id = UUID()
+    let command: String
+    let directory: String
+}
+
 @MainActor
 final class DeckStore: ObservableObject {
     @Published var accounts: [ClaudeAccount] = []
@@ -17,8 +23,8 @@ final class DeckStore: ObservableObject {
     @Published var contentMatches: Set<String>?
     @Published var isSearchingContent = false
     @Published var errorMessage: String?
-    @Published var noticeMessage: String?
     @Published var directLaunchEnabled = ShellHook.isInstalled
+    @Published var pendingLaunch: PendingLaunch?
 
     private let indexer = ChatIndexer()
     private var timer: Timer?
@@ -139,9 +145,16 @@ final class DeckStore: ObservableObject {
     }
 
     private func handle(_ outcome: Launcher.Outcome) {
-        if case .copiedToClipboard(let command) = outcome {
-            noticeMessage = "Ho aperto una scheda Warp e copiato il comando negli appunti: incollalo con ⌘V e premi Invio.\n\n\(command)\n\nPer aprire le chat direttamente attiva “Apertura diretta in Warp” nella pagina Account."
+        if case .needsDirectLaunch(let command, let directory) = outcome {
+            pendingLaunch = PendingLaunch(command: command, directory: directory)
         }
+    }
+
+    /// Enables the shell hook, then runs the launch that was waiting for it.
+    func enableDirectLaunchAndRun(_ launch: PendingLaunch) {
+        setDirectLaunch(true)
+        guard directLaunchEnabled else { return }
+        handle(Launcher.run(launch.command, in: launch.directory))
     }
 
     func rename(_ chat: ChatSession, to title: String) {

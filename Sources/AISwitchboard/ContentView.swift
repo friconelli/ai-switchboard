@@ -77,15 +77,18 @@ struct ContentView: View {
         }
         .onAppear { store.start() }
         .alert(
-            "Quasi fatto",
-            isPresented: Binding(get: { store.noticeMessage != nil }, set: { if !$0 { store.noticeMessage = nil } })
-        ) {
-            if !store.directLaunchEnabled {
-                Button("Attiva apertura diretta") { store.setDirectLaunch(true) }
+            "Aprire le chat direttamente in \(Launcher.terminalName)?",
+            isPresented: Binding(get: { store.pendingLaunch != nil }, set: { if !$0 { store.pendingLaunch = nil } }),
+            presenting: store.pendingLaunch
+        ) { launch in
+            Button("Attiva e apri") { store.enableDirectLaunchAndRun(launch) }
+                .keyboardShortcut(.defaultAction)
+            Button("Solo questa volta: copia il comando") {
+                Launcher.openTabCopyingCommand(launch.command, directory: launch.directory)
             }
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(store.noticeMessage ?? "")
+            Button("Annulla", role: .cancel) {}
+        } message: { launch in
+            Text("Per avviare Claude nella nuova scheda l'app aggiunge a ~/.zshrc un piccolo blocco “AI Switchboard” che esegue il comando preparato per quella cartella (copia di sicurezza in ~/.ai-switchboard/zshrc.backup). Si disattiva da Account.\n\n\(launch.command)")
         }
         .alert(
             "Operazione non riuscita",

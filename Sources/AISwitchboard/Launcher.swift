@@ -1,15 +1,19 @@
 import AppKit
-import ApplicationServices
 
 /// Opens a command in a new Warp tab, or Terminal as fallback.
 ///
 /// Warp (2026) no longer runs launch configurations from a URL, so the tab is opened at the
 /// working directory and the command is pasted into it. Pasting needs the Accessibility
 /// permission; without it the command is left on the clipboard.
+/// Opens Claude in a new Warp tab (or Terminal when Warp is missing).
+///
+/// Warp (2026) can't run a command from a URL and `warpctrl` can only type into the input,
+/// so the command is queued for `ShellHook`, which runs it at the new tab's first prompt.
+/// Without the hook nothing is opened: the caller asks the user to enable it first.
 enum Launcher {
     enum Outcome {
         case started
-        case copiedToClipboard(String)
+        case needsDirectLaunch(command: String, directory: String)
     }
 
     private static let warpBundleIDs = ["dev.warp.Warp-Stable", "dev.warp.Warp"]
@@ -31,53 +35,29 @@ enum Launcher {
     }
 
     static func run(_ command: String, in directory: String) -> Outcome {
-        guard let warpURL else {
+        guard warpURL != nil else {
             openInTerminal(command, directory: directory)
             return .started
         }
-
-        // Preferred path: queue the command for the zsh hook, which runs it in the new tab.
-        if ShellHook.isInstalled, ShellHook.queue(command, for: directory) {
-            let configuration = NSWorkspace.OpenConfiguration()
-            configuration.activates = true
-            NSWorkspace.shared.open([URL(fileURLWithPath: directory)], withApplicationAt: warpURL, configuration: configuration)
-            return .started
+        guard ShellHook.isInstalled, ShellHook.queue(command, for: directory) else {
+            return .needsDirectLaunch(command: command, directory: directory)
         }
-
-        let trusted = AXIsProcessTrustedWithOptions(
-            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        )
-        let pasteboard = NSPasteboard.general
-        let previous = pasteboard.string(forType: .string)
-        pasteboard.clearContents()
-        pasteboard.setString(command, forType: .string)
-
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.open([URL(fileURLWithPath: directory)], withApplicationAt: warpURL, configuration: configuration) { _, _ in
-            guard trusted else { return }
-            // Give Warp time to create the tab and focus its input.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                pressKey(9, flags: .maskCommand) // ⌘V
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    pressKey(36) // Return
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        pasteboard.clearContents()
-                        if let previous { pasteboard.setString(previous, forType: .string) }
-                    }
-                }
-            }
-        }
-        return trusted ? .started : .copiedToClipboard(command)
+        openTab(at: directory)
+        return .started
     }
 
-    private static func pressKey(_ keyCode: CGKeyCode, flags: CGEventFlags = []) {
-        let source = CGEventSource(stateID: .hidSystemState)
-        for keyDown in [true, false] {
-            let event = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: keyDown)
-            event?.flags = flags
-            event?.post(tap: .cghidEventTap)
-        }
+    /// One-off fallback: opens the tab and leaves the command on the clipboard.
+    static func openTabCopyingCommand(_ command: String, directory: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
+        openTab(at: directory)
+    }
+
+    private static func openTab(at directory: String) {
+        guard let warpURL else { return }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open([URL(fileURLWithPath: directory)], withApplicationAt: warpURL, configuration: configuration)
     }
 
     private static func openInTerminal(_ command: String, directory: String) {

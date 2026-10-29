@@ -30,7 +30,7 @@ Configurazione in `~/Library/Application Support/AISwitchboard/config.json`.
 
 Con **Apertura diretta** attiva (pagina Account) l'app aggiunge a `~/.zshrc` un blocco delimitato da `# >>> AI Switchboard >>>` (salvando prima una copia in `~/.ai-switchboard/zshrc.backup`). “Riprendi” e “Nuova chat” scrivono il comando in `~/.ai-switchboard/launch/<id>.zsh` con la cartella sulla prima riga e aprono una scheda Warp lì: al primo prompt il blocco esegue il comando di quella cartella (solo se più recente di 30 secondi, una volta per scheda). Disattivandola il blocco viene rimosso.
 
-Senza apertura diretta: incolla il comando nella scheda con ⌘V+Invio (serve il permesso Accessibilità) oppure lo lascia negli appunti. Senza Warp usa Terminale.
+Se l'apertura diretta non è attiva, al primo “Riprendi” l'app chiede di attivarla (“Attiva e apri”) oppure apre la scheda lasciando il comando negli appunti. Il vecchio metodo con ⌘V simulato è stato tolto: con la firma ad-hoc il permesso Accessibilità si perde a ogni build. Senza Warp usa Terminale.
 
 ## Build
 
