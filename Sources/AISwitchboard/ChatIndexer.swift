@@ -11,7 +11,8 @@ final class ChatIndexer {
     }
 
     private var cache: [String: CacheEntry] = [:]
-    private let cacheURL = ClaudePaths.appSupport.appendingPathComponent("index-cache.json")
+    // Bump the version when indexing rules change, so every transcript is re-indexed.
+    private let cacheURL = ClaudePaths.appSupport.appendingPathComponent("index-cache-v2.json")
 
     init() {
         if let data = try? Data(contentsOf: cacheURL),
@@ -63,12 +64,17 @@ final class ChatIndexer {
 
     // MARK: - Single file
 
-    private static let customTitleNeedle = Array(#"{"type":"custom-title""#.utf8)
-    private static let aiTitleNeedle = Array(#"{"type":"ai-title""#.utf8)
+    // Field order is not guaranteed (rewritten lines come out in another order), so
+    // records are recognised by content, never by prefix.
+    private static let customTitleNeedle = Array(#""type":"custom-title""#.utf8)
+    private static let aiTitleNeedle = Array(#""type":"ai-title""#.utf8)
+    private static let maxTitleLineLength = 8192
     private static let cwdNeedle = Array(#""cwd":""#.utf8)
     private static let timestampNeedle = Array(#""timestamp":""#.utf8)
     private static let userTypeNeedle = Array(#""type":"user""#.utf8)
     private static let promptNeedle = Array(#""message":{"role":"user","content":""#.utf8)
+    private static let promptNeedleReordered = Array(#""message":{"content":""#.utf8)
+    private static let continuedPrefix = "This session is being continued from a previous conversation"
     private static let metaNeedle = Array(#""isMeta":true"#.utf8)
     private static let sidechainNeedle = Array(#""isSidechain":true"#.utf8)
 
@@ -87,12 +93,14 @@ final class ChatIndexer {
         data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             guard let base = raw.baseAddress else { return }
             forEachLine(base: base, count: raw.count) { line, length in
-                if hasPrefix(line, length, customTitleNeedle) {
-                    customTitle = decode(line, length)?["customTitle"] as? String
+                if length < maxTitleLineLength, contains(line, length, customTitleNeedle),
+                   let json = decode(line, length), json["type"] as? String == "custom-title" {
+                    customTitle = json["customTitle"] as? String ?? customTitle
                     return
                 }
-                if hasPrefix(line, length, aiTitleNeedle) {
-                    aiTitle = decode(line, length)?["aiTitle"] as? String
+                if length < maxTitleLineLength, contains(line, length, aiTitleNeedle),
+                   let json = decode(line, length), json["type"] as? String == "ai-title" {
+                    aiTitle = json["aiTitle"] as? String ?? aiTitle
                     return
                 }
                 if session.cwd == nil, let cwd = stringValue(after: cwdNeedle, in: line, length) {
@@ -102,14 +110,15 @@ final class ChatIndexer {
                     session.startedAt = isoFormatter.date(from: ts)
                 }
                 guard contains(line, length, userTypeNeedle),
-                      contains(line, length, promptNeedle),
+                      contains(line, length, promptNeedle) || contains(line, length, promptNeedleReordered),
                       !contains(line, length, metaNeedle),
                       !contains(line, length, sidechainNeedle) else { return }
                 session.promptCount += 1
                 if session.firstPrompt == nil,
                    let message = decode(line, length)?["message"] as? [String: Any],
                    let content = message["content"] as? String,
-                   !content.hasPrefix("<") {
+                   !content.hasPrefix("<"),
+                   !content.hasPrefix(continuedPrefix) {
                     session.firstPrompt = String(content.prefix(300))
                         .replacingOccurrences(of: "\n", with: " ")
                 }

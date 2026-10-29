@@ -17,11 +17,12 @@ enum ChatOperations {
 
     /// Same records `/rename` writes: Claude Code picks the last one.
     static func rename(_ session: ChatSession, to title: String) throws {
-        let records: [[String: Any]] = [
-            ["type": "custom-title", "customTitle": title, "sessionId": session.id],
-            ["type": "agent-name", "agentName": title, "sessionId": session.id],
+        // Written by hand to keep Claude Code's own field order.
+        let lines = [
+            #"{"type":"custom-title","customTitle":\#(jsonString(title)),"sessionId":\#(jsonString(session.id))}"#,
+            #"{"type":"agent-name","agentName":\#(jsonString(title)),"sessionId":\#(jsonString(session.id))}"#,
         ]
-        try append(records, to: session.fileURL)
+        try appendLines(lines, to: session.fileURL)
     }
 
     // MARK: - Delete
@@ -37,6 +38,29 @@ enum ChatOperations {
     }
 
     // MARK: - Helpers
+
+    /// A JSON string literal (with quotes) for `value`.
+    static func jsonString(_ value: String) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: [value], options: [.withoutEscapingSlashes])) ?? Data("[\"\"]".utf8)
+        return String(String(decoding: data, as: UTF8.self).dropFirst().dropLast())
+    }
+
+    static func appendLines(_ lines: [String], to url: URL) throws {
+        let handle = try FileHandle(forUpdating: url)
+        defer { try? handle.close() }
+        let end = try handle.seekToEnd()
+        var payload = Data()
+        if end > 0 {
+            try handle.seek(toOffset: end - 1)
+            if handle.readData(ofLength: 1) != Data([0x0A]) { payload.append(0x0A) }
+            try handle.seekToEnd()
+        }
+        for line in lines {
+            payload.append(Data(line.utf8))
+            payload.append(0x0A)
+        }
+        try handle.write(contentsOf: payload)
+    }
 
     static func append(_ records: [[String: Any]], to url: URL) throws {
         let handle = try FileHandle(forUpdating: url)
