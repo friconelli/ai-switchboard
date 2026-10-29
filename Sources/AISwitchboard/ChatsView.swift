@@ -17,6 +17,7 @@ struct ChatsView: View {
     @State private var trashTargets: [ChatSession] = []
     @State private var moveTargets: [ChatSession] = []
     @State private var splitTarget: ChatSession?
+    @State private var slimTargets: [ChatSession] = []
 
     private var projects: [(dir: String, count: Int)] {
         Dictionary(grouping: store.chats, by: \.projectDir)
@@ -85,6 +86,9 @@ struct ChatsView: View {
             RenameSheet(chat: chat) { title in
                 store.rename(chat, to: title)
             }
+        }
+        .sheet(isPresented: Binding(get: { !slimTargets.isEmpty }, set: { if !$0 { slimTargets = [] } })) {
+            SlimSheet(store: store, chats: slimTargets)
         }
         .sheet(item: $splitTarget) { chat in
             SplitSheet(store: store, chat: chat) { created in
@@ -243,6 +247,14 @@ struct ChatsView: View {
             }
 
             Button {
+                slimTargets = selectedChats
+            } label: {
+                Image(systemName: "arrow.down.right.and.arrow.up.left")
+            }
+            .help("Snellisci: togli dati tecnici, immagini e output temporanei")
+            .secondaryButton()
+
+            Button {
                 moveTargets = selectedChats
             } label: {
                 Image(systemName: "folder.badge.gearshape")
@@ -304,6 +316,7 @@ struct ChatsView: View {
         } else {
             Button("Unisci \(targets.count) chat…") { mergeTargets = targets }
         }
+        Button(targets.count == 1 ? "Snellisci…" : "Snellisci \(targets.count) chat…") { slimTargets = targets }
         Divider()
         Button("Sposta in…") { moveTargets = targets }
         Menu("Contesto") { contextItems(for: targets) }
@@ -355,7 +368,7 @@ struct ChatsView: View {
             EmptyStateView(
                 symbol: "text.bubble",
                 title: "Seleziona una chat",
-                message: "⌘-clic per selezionarne più di una e unirle."
+                message: "⌘-clic per selezionarne più di una e unirle, ⌘A per snellirle tutte."
             )
         }
     }

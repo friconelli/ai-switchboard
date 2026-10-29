@@ -267,6 +267,41 @@ final class DeckStore: ObservableObject {
         }
     }
 
+    struct SlimResult {
+        var slimmed = 0
+        var before = 0
+        var after = 0
+        var problems: [String] = []
+    }
+
+    /// Slims chats one at a time (each is read, rewritten, verified and swapped in place).
+    func slim(_ chats: [ChatSession], enabled: Set<SlimEngine.Category>, progress: @escaping (Int) -> Void) async -> SlimResult {
+        var result = SlimResult()
+        let active = activeSessionIDs
+        for (index, chat) in chats.enumerated() {
+            progress(index)
+            if active.contains(chat.id) {
+                result.problems.append("“\(chat.displayTitle)”: aperta in una sessione")
+                continue
+            }
+            do {
+                let outcome = try await Task.detached(priority: .userInitiated) {
+                    let source = try SlimEngine.analyze(chat)
+                    let plan = SlimEngine.plan(source, enabled: enabled)
+                    guard plan.bytesSaved > 0 else { return SlimEngine.Outcome(before: source.sizeBytes, after: source.sizeBytes) }
+                    return try SlimEngine.apply(source, plan: plan)
+                }.value
+                result.slimmed += 1
+                result.before += outcome.before
+                result.after += outcome.after
+            } catch {
+                result.problems.append("“\(chat.displayTitle)”: \(error.localizedDescription)")
+            }
+        }
+        reloadChats()
+        return result
+    }
+
     func killSession(_ session: ActiveSession) {
         kill(session.pid, SIGTERM)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.refreshActiveSessions() }
