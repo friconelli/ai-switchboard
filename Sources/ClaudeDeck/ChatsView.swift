@@ -377,7 +377,7 @@ private struct MultiSelectionView: View {
                     symbol: "square.stack.fill",
                     tint: Theme.coral,
                     title: "\(chats.count) chat selezionate",
-                    subtitle: "Puoi unirle in un'unica conversazione da riprendere con Claude: i messaggi vengono messi in ordine cronologico in una nuova chat, le originali restano intatte."
+                    subtitle: "Puoi unirle in un'unica conversazione da riprendere con Claude. Dopo l'unione le chat originali vanno nel Cestino e resta solo quella unita."
                 ) {
                     Button(action: onMerge) {
                         Label("Unisci", systemImage: "arrow.triangle.merge")
@@ -457,15 +457,19 @@ private struct MergeSheet: View {
     let onDone: (String?) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var ordered: [ChatSession] = []
     @State private var title = ""
+    @State private var targetID = ""
     @State private var openAfter = true
     @State private var accountID: String?
+    @State private var isMerging = false
 
-    private var ordered: [ChatSession] {
-        chats.sorted { ($0.startedAt ?? $0.modifiedAt) < ($1.startedAt ?? $1.modifiedAt) }
-    }
-
+    private var target: ChatSession? { ordered.first { $0.id == targetID } ?? ordered.first }
     private var totalSize: Int64 { chats.reduce(0) { $0 + $1.sizeBytes } }
+    private var projectChoices: [ChatSession] {
+        var seen: Set<String> = []
+        return ordered.filter { seen.insert($0.projectDir).inserted }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -474,88 +478,118 @@ private struct MergeSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Unisci \(chats.count) chat")
                         .font(.title3.bold())
-                    Text("Verrà creata una nuova chat; le originali restano dove sono.")
+                    Text("Le conversazioni diventano una sola, nell'ordine qui sotto.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Ordine (dalla più vecchia)")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Ordine")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 ForEach(Array(ordered.enumerated()), id: \.element.id) { index, chat in
-                    HStack {
-                        Text("\(index + 1).")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                        Text(chat.displayTitle).lineLimit(1)
+                    HStack(spacing: 8) {
+                        Text("\(index + 1)")
+                            .font(.caption.weight(.bold).monospacedDigit())
+                            .frame(width: 20, height: 20)
+                            .background(Theme.coral.opacity(0.15), in: Circle())
+                            .foregroundStyle(Theme.coral)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(chat.displayTitle).lineLimit(1)
+                            Text("\(chat.projectName) · \(relative(chat.startedAt ?? chat.modifiedAt)) · \(formatBytes(chat.sizeBytes))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Spacer()
-                        Text(chat.projectName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Button { move(index, by: -1) } label: { Image(systemName: "chevron.up") }
+                            .buttonStyle(.borderless)
+                            .disabled(index == 0)
+                        Button { move(index, by: 1) } label: { Image(systemName: "chevron.down") }
+                            .buttonStyle(.borderless)
+                            .disabled(index == ordered.count - 1)
                     }
+                    .padding(.vertical, 3)
                 }
             }
             .padding(12)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
 
-            TextField("Titolo della nuova chat", text: $title)
-                .textFieldStyle(.roundedBorder)
-
-            HStack {
-                Toggle("Apri subito in \(Launcher.terminalName) con", isOn: $openAfter)
-                Picker("", selection: $accountID) {
-                    ForEach(store.accounts) { account in
-                        Text(account.name).tag(Optional(account.id))
+            Form {
+                TextField("Nome della chat unita", text: $title)
+                if projectChoices.count > 1 {
+                    Picker("Salva nel progetto", selection: $targetID) {
+                        ForEach(projectChoices) { chat in
+                            Text(chat.projectName).tag(chat.id)
+                        }
                     }
                 }
-                .labelsHidden()
-                .fixedSize()
-                .disabled(!openAfter)
+                HStack {
+                    Toggle("Riapri subito in \(Launcher.terminalName) con", isOn: $openAfter)
+                    Picker("", selection: $accountID) {
+                        ForEach(store.accounts) { account in
+                            Text(account.name).tag(Optional(account.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .disabled(!openAfter)
+                }
             }
+            .formStyle(.columns)
 
-            if Set(chats.map(\.projectDir)).count > 1 {
-                Label("Le chat sono di progetti diversi: la nuova verrà salvata in “\(ordered[0].projectName)”.", systemImage: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Dopo l'unione le \(chats.count) chat originali vanno nel Cestino: resta solo quella unita.", systemImage: "trash")
+                Label("Viene ripresa la conversazione effettiva di ogni chat; se una era compattata entra il suo riassunto. I messaggi ripetuti tra chat derivate compaiono una volta sola.", systemImage: "info.circle")
+                if totalSize > 20_000_000 {
+                    Label("Totale \(formatBytes(totalSize)): alla ripresa Claude Code potrebbe compattare il contesto.", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                }
             }
-            if totalSize > 20_000_000 {
-                Label("Totale \(formatBytes(totalSize)): alla ripresa Claude Code probabilmente compatterà il contesto.", systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             HStack {
                 Spacer()
                 Button("Annulla", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("Unisci") {
-                    let newID = store.merge(chats, title: title)
-                    if openAfter, let newID, let account = accountID.flatMap(store.account(id:)) {
-                        let merged = ChatSession(
-                            id: newID,
-                            fileURL: ordered[0].fileURL.deletingLastPathComponent().appendingPathComponent("\(newID).jsonl"),
-                            projectDir: ordered[0].projectDir,
-                            cwd: ordered[0].cwd,
-                            title: title,
-                            modifiedAt: Date(),
-                            sizeBytes: 0
-                        )
-                        store.resume(merged, with: account)
-                    }
-                    onDone(newID)
-                    dismiss()
+                Button {
+                    merge()
+                } label: {
+                    if isMerging { ProgressView().controlSize(.small) } else { Text("Unisci") }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(isMerging || title.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(22)
-        .frame(width: 520)
+        .frame(width: 560)
         .onAppear {
-            title = "Unione: " + ordered.map { String($0.displayTitle.prefix(30)) }.joined(separator: " + ")
+            ordered = chats.sorted { ($0.startedAt ?? $0.modifiedAt) < ($1.startedAt ?? $1.modifiedAt) }
+            targetID = ordered.first?.id ?? ""
+            title = ordered.first(where: { $0.isCustomTitle })?.title
+                ?? ordered.map { String($0.displayTitle.prefix(30)) }.joined(separator: " + ")
             accountID = store.preferredAccount?.id
         }
+    }
+
+    private func move(_ index: Int, by offset: Int) {
+        let destination = index + offset
+        guard ordered.indices.contains(destination) else { return }
+        ordered.swapAt(index, destination)
+    }
+
+    private func merge() {
+        guard let target else { return }
+        isMerging = true
+        let name = title.trimmingCharacters(in: .whitespaces)
+        let merged = store.merge(ordered, title: name, target: target)
+        isMerging = false
+        guard let merged else { return }
+        if openAfter, let account = accountID.flatMap(store.account(id:)) {
+            store.resume(merged, with: account)
+        }
+        onDone(merged.id)
+        dismiss()
     }
 }

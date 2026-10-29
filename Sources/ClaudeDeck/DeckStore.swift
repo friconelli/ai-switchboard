@@ -144,21 +144,54 @@ final class DeckStore: ObservableObject {
         }
     }
 
-    /// Returns the new session's ID.
-    @discardableResult
-    func merge(_ chats: [ChatSession], title: String) -> String? {
-        let ordered = chats.sorted { ($0.startedAt ?? $0.modifiedAt) < ($1.startedAt ?? $1.modifiedAt) }
-        var newID: String?
-        perform {
-            let url = try ChatOperations.merge(ordered, title: title)
-            newID = url.deletingPathExtension().lastPathComponent
-            // Make the merged chat visible to every account that used one of the sources.
-            for account in accounts where !account.isDefault {
-                let used = ordered.contains { sessionAccounts[$0.id]?.contains(account.id) ?? false }
-                if used, let newID { try appendHistory(newID, cwd: ordered[0].workingDirectory, title: title, account: account) }
-            }
+    /// Merges `ordered` (in the given order) into a new chat saved next to `target`, then moves
+    /// the originals to the Trash. Returns the new chat, or nil on failure (originals untouched).
+    func merge(_ ordered: [ChatSession], title: String, target: ChatSession) -> ChatSession? {
+        let active = activeSessionIDs
+        if let busy = ordered.first(where: { active.contains($0.id) }) {
+            errorMessage = ChatOperationError.active(busy.displayTitle).localizedDescription
+            return nil
         }
-        return newID
+
+        let result: MergeEngine.Result
+        do {
+            result = try MergeEngine.merge(
+                ordered,
+                title: title,
+                targetFolder: target.fileURL.deletingLastPathComponent(),
+                configDirs: accounts.map(\.configDir)
+            )
+        } catch {
+            errorMessage = "Unione non riuscita, le chat originali non sono state toccate.\n\n\(error.localizedDescription)"
+            return nil
+        }
+
+        // Make the merged chat show up in /resume history of every account that used a source.
+        for account in accounts where !account.isDefault {
+            let used = ordered.contains { sessionAccounts[$0.id]?.contains(account.id) ?? false }
+            if used { try? appendHistory(result.sessionID, cwd: target.workingDirectory, title: title, account: account) }
+        }
+
+        var failed: [String] = []
+        for chat in ordered {
+            do { try ChatOperations.trash(chat) } catch { failed.append(chat.displayTitle) }
+        }
+        if !failed.isEmpty {
+            errorMessage = "Unione completata, ma non ho potuto spostare nel Cestino: \(failed.joined(separator: ", "))."
+        }
+
+        sessionAccounts = AccountScanner.sessionAccounts(accounts)
+        reloadChats()
+        return ChatSession(
+            id: result.sessionID,
+            fileURL: result.fileURL,
+            projectDir: target.projectDir,
+            cwd: target.cwd,
+            title: title,
+            isCustomTitle: true,
+            modifiedAt: Date(),
+            sizeBytes: 0
+        )
     }
 
     func killSession(_ session: ActiveSession) {
