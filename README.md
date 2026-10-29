@@ -1,4 +1,4 @@
-# Claude Deck
+# AI Switchboard
 
 App macOS (SwiftUI) per orchestrare Claude Code con più account (`claude-fede`, `claude-gusto`, …).
 
@@ -19,7 +19,7 @@ App macOS (SwiftUI) per orchestrare Claude Code con più account (`claude-fede`,
 
 ## Warp
 
-Apre una scheda Warp nella cartella della chat e vi incolla il comando (serve il permesso Accessibilità per Claude Deck; senza, il comando resta negli appunti). Senza Warp usa Terminale.
+Apre una scheda Warp nella cartella della chat e vi incolla il comando (serve il permesso Accessibilità per AI Switchboard; senza, il comando resta negli appunti). Senza Warp usa Terminale.
 
 ## Build
 

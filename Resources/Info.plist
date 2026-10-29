@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>ClaudeDeck</string>
+    <string>AISwitchboard</string>
     <key>CFBundleDisplayName</key>
-    <string>Claude Deck</string>
+    <string>AI Switchboard</string>
     <key>CFBundleIdentifier</key>
-    <string>com.federicomancinelli.claudedeck</string>
+    <string>com.federicomancinelli.aiswitchboard</string>
     <key>CFBundleExecutable</key>
-    <string>ClaudeDeck</string>
+    <string>AISwitchboard</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleVersion</key>

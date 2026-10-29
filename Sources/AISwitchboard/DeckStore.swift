@@ -125,7 +125,7 @@ final class DeckStore: ObservableObject {
 
     private func handle(_ outcome: Launcher.Outcome) {
         if case .copiedToClipboard(let command) = outcome {
-            noticeMessage = "Ho aperto una scheda Warp e copiato il comando negli appunti: incollalo con ⌘V e premi Invio.\n\n\(command)\n\nPer farlo in automatico, abilita Claude Deck in Impostazioni di Sistema → Privacy e sicurezza → Accessibilità."
+            noticeMessage = "Ho aperto una scheda Warp e copiato il comando negli appunti: incollalo con ⌘V e premi Invio.\n\n\(command)\n\nPer farlo in automatico, abilita AI Switchboard in Impostazioni di Sistema → Privacy e sicurezza → Accessibilità."
         }
     }
 
@@ -213,7 +213,7 @@ final class DeckStore: ObservableObject {
     private func appendHistory(_ sessionID: String, cwd: String, title: String, account: ClaudeAccount) throws {
         let url = account.configDir.appendingPathComponent("history.jsonl")
         let record: [String: Any] = [
-            "display": "[Claude Deck] \(title)",
+            "display": "[AI Switchboard] \(title)",
             "pastedContents": [String: Any](),
             "timestamp": Int(Date().timeIntervalSince1970 * 1000),
             "project": cwd,

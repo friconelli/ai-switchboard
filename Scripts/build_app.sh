@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="ClaudeDeck"
+APP_NAME="AISwitchboard"
 APP_DIR="$ROOT_DIR/.build/$APP_NAME.app"
 
 echo "==> Building release binary"

@@ -1,9 +1,9 @@
 import SwiftUI
 
 @main
-struct ClaudeDeckApp: App {
+struct AISwitchboardApp: App {
     var body: some Scene {
-        WindowGroup("Claude Deck") {
+        WindowGroup("AI Switchboard") {
             ContentView()
         }
         .defaultSize(width: 1240, height: 780)

@@ -133,7 +133,7 @@ enum ClaudePaths {
 
     static var appSupport: URL {
         let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ClaudeDeck")
+            .appendingPathComponent("AISwitchboard")
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }

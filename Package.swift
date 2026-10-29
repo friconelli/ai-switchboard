@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClaudeDeck",
+    name: "AISwitchboard",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "ClaudeDeck",
-            path: "Sources/ClaudeDeck"
+            name: "AISwitchboard",
+            path: "Sources/AISwitchboard"
         )
     ]
 )
