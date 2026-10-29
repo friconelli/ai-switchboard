@@ -11,6 +11,22 @@ enum Theme {
     static let cardBackground = Color(nsColor: .controlBackgroundColor)
     static let cardRadius: CGFloat = 16
 
+    static func color(forContext context: String) -> Color {
+        switch context {
+        case "Personale": return .pink
+        case "Studiogusto": return .indigo
+        default: return .teal
+        }
+    }
+
+    static func symbol(forContext context: String) -> String {
+        switch context {
+        case "Personale": return "person.fill"
+        case "Studiogusto": return "building.2.fill"
+        default: return "square.stack.fill"
+        }
+    }
+
     /// Stable colour per account name.
     static func color(forAccount name: String) -> Color {
         let palette: [Color] = [.blue, .purple, .teal, .pink, .indigo, .green]
@@ -34,6 +50,25 @@ struct AccountBadge: View {
             .background(color.opacity(0.16), in: Capsule())
             .foregroundStyle(color)
             .help(account.email ?? account.name)
+    }
+}
+
+struct ContextBadge: View {
+    let context: String?
+
+    var body: some View {
+        if let context {
+            Label(context, systemImage: Theme.symbol(forContext: context))
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Theme.color(forContext: context).opacity(0.15), in: Capsule())
+                .foregroundStyle(Theme.color(forContext: context))
+        } else {
+            Label("Da assegnare", systemImage: "tray")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

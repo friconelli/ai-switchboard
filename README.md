@@ -13,6 +13,15 @@ App macOS (SwiftUI) per orchestrare Claude Code con più account (`claude-fede`,
 - **Account**: email, piano, modello, plugin, prompt di oggi, ultimo uso, stato dello storico condiviso; nuova chat in una cartella a scelta.
 - **Memoria**: file `memory/*.md` per progetto, modificabili e salvabili.
 
+## Contesti e aree di lavoro
+
+- **Contesti** (Personale, Studiogusto): indipendenti dagli account. Il contesto di una chat si ricava dalla sua cartella: le aree in `~/Chat AI/<contesto>/` appartengono a quel contesto, i progetti in `~/projects` hanno un contesto assegnabile (predefinito Studiogusto), il resto è “Da assegnare”. Si può forzare il contesto di singole chat.
+- **Aree di lavoro**: cartelle in `~/Chat AI/<contesto>/<area>` per le chat che non riguardano un repo, create dall'app con `CLAUDE.md`, `risorse/` e `output/`. Da qui si avviano nuove chat in Warp.
+- **Sposta in…**: sposta una o più chat in un'area o in un progetto. Riscrive come testo il `cwd` originale e i percorsi della cartella di supporto, verifica il risultato, sposta tutto in `~/.claude/projects/<cartella codificata>/` e manda l'originale nel Cestino (il nome codificato è il percorso con ogni carattere non alfanumerico sostituito da `-`).
+- **Memoria**: i file di memoria si spostano tra progetti/aree aggiornando entrambi i `MEMORY.md`.
+
+Configurazione in `~/Library/Application Support/AISwitchboard/config.json`.
+
 ## Come trova gli account
 
 `~/.claude` (predefinito) più ogni `~/.claude-*` che contiene `.claude.json`. Lo storico è condiviso se `projects` è un symlink a `~/.claude/projects`.

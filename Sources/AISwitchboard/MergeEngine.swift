@@ -248,7 +248,7 @@ enum MergeEngine {
 
     /// Every spelling of a chat's side folder: the real path and the one seen through each
     /// account's `projects` symlink (`~/.claude-<name>/projects/...`), which is what transcripts record.
-    private static func sideDirPaths(of session: ChatSession) -> [String] {
+    static func sideDirPaths(of session: ChatSession) -> [String] {
         let home = ClaudePaths.home
         let entries = (try? FileManager.default.contentsOfDirectory(atPath: home.path)) ?? []
         var paths = [session.fileURL.deletingPathExtension().path]

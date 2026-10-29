@@ -1,7 +1,14 @@
 import SwiftUI
 
+enum ChatScope: Hashable {
+    case all
+    case context(String)
+    case unassigned
+}
+
 enum DeckSection: Hashable {
-    case chats
+    case chats(ChatScope)
+    case areas
     case active
     case accounts
     case memory
@@ -9,20 +16,34 @@ enum DeckSection: Hashable {
 
 struct ContentView: View {
     @StateObject private var store = DeckStore()
-    @State private var section: DeckSection? = .chats
+    @State private var section: DeckSection? = .chats(.all)
     @State private var focusedChatID: String?
 
     var body: some View {
         NavigationSplitView {
             List(selection: $section) {
-                row("Chat", symbol: "bubble.left.and.bubble.right.fill", tint: Theme.coral, count: store.chats.count)
-                    .tag(DeckSection.chats)
+                Section("Chat") {
+                    row("Tutte", symbol: "bubble.left.and.bubble.right.fill", tint: Theme.coral, count: store.chats.count)
+                        .tag(DeckSection.chats(.all))
+                    ForEach(store.config.contexts, id: \.self) { context in
+                        row(context, symbol: Theme.symbol(forContext: context), tint: Theme.color(forContext: context),
+                            count: store.chats.filter { store.context(for: $0) == context }.count)
+                            .tag(DeckSection.chats(.context(context)))
+                    }
+                    row("Da assegnare", symbol: "tray.fill", tint: .gray,
+                        count: store.chats.filter { store.context(for: $0) == nil }.count)
+                        .tag(DeckSection.chats(.unassigned))
+                }
+                Section("Gestione") {
+                row("Aree di lavoro", symbol: "folder.fill", tint: .orange, count: store.areas.count)
+                    .tag(DeckSection.areas)
                 row("Sessioni attive", symbol: "bolt.horizontal.fill", tint: .green, count: store.activeSessions.count)
                     .tag(DeckSection.active)
                 row("Account", symbol: "person.2.fill", tint: .blue, count: store.accounts.filter { !$0.isDefault }.count)
                     .tag(DeckSection.accounts)
                 row("Memoria", symbol: "brain.head.profile", tint: .purple, count: store.memoryFiles.count)
                     .tag(DeckSection.memory)
+                }
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 220)
             .safeAreaInset(edge: .bottom) {
@@ -38,13 +59,15 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            switch section ?? .chats {
-            case .chats:
-                ChatsView(store: store, focusedChatID: $focusedChatID)
+            switch section ?? .chats(.all) {
+            case .chats(let scope):
+                ChatsView(store: store, scope: scope, focusedChatID: $focusedChatID)
+            case .areas:
+                WorkspacesView(store: store) { scope in section = .chats(scope) }
             case .active:
                 ActiveSessionsView(store: store) { id in
                     focusedChatID = id
-                    section = .chats
+                    section = .chats(.all)
                 }
             case .accounts:
                 AccountsView(store: store)

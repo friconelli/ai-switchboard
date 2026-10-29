@@ -8,6 +8,9 @@ final class DeckStore: ObservableObject {
     @Published var sessionAccounts: [String: Set<String>] = [:]
     @Published var activeSessions: [ActiveSession] = []
     @Published var memoryFiles: [MemoryFile] = []
+    @Published var config = SwitchboardConfig.load()
+    @Published var areas: [WorkFolder] = []
+    @Published var projects: [WorkFolder] = []
 
     @Published var isIndexing = false
     @Published var indexProgress: Double = 0
@@ -30,6 +33,8 @@ final class DeckStore: ObservableObject {
     }
 
     func reloadAll() {
+        Workspaces.ensureRoots(config)
+        reloadFolders()
         accounts = AccountScanner.accounts()
         sessionAccounts = AccountScanner.sessionAccounts(accounts)
         refreshActiveSessions()
@@ -226,6 +231,78 @@ final class DeckStore: ObservableObject {
             try handle.seekToEnd()
             try handle.write(contentsOf: line)
         }
+    }
+
+    // MARK: - Contexts and folders
+
+    func reloadFolders() {
+        areas = Workspaces.areas(config)
+        projects = Workspaces.projects(config)
+    }
+
+    func context(for chat: ChatSession) -> String? {
+        config.context(for: chat)
+    }
+
+    func chats(in folder: WorkFolder) -> [ChatSession] {
+        chats.filter { $0.workingDirectory.isInside(folder.path) }
+    }
+
+    /// `nil` resets the chat to its folder's context.
+    func setContext(_ context: String?, for chats: [ChatSession]) {
+        for chat in chats { config.chatContexts[chat.id] = context }
+        config.save()
+    }
+
+    func setContext(_ context: String?, forFolder path: String) {
+        config.folderContexts[path] = context
+        config.save()
+        reloadFolders()
+    }
+
+    func createArea(named name: String, context: String) -> String? {
+        do {
+            let path = try Workspaces.createArea(named: name, context: context, config: config)
+            reloadFolders()
+            return path
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// Moves chats to `folder`; returns how many were moved.
+    @discardableResult
+    func move(_ chats: [ChatSession], to folder: String) -> Int {
+        let active = activeSessionIDs
+        var moved = 0
+        var problems: [String] = []
+        for chat in chats {
+            if active.contains(chat.id) {
+                problems.append("“\(chat.displayTitle)” è aperta in una sessione")
+                continue
+            }
+            do {
+                _ = try ChatMover.move(chat, to: folder)
+                moved += 1
+            } catch {
+                problems.append(error.localizedDescription)
+            }
+        }
+        if !problems.isEmpty {
+            errorMessage = "Spostate \(moved) chat su \(chats.count).\n\n" + problems.joined(separator: "\n")
+        }
+        reloadChats()
+        return moved
+    }
+
+    func moveMemory(_ file: MemoryFile, toFolder folder: String) {
+        do {
+            try MemoryMover.move(file, toFolder: folder)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        reloadMemory()
     }
 
     // MARK: - Memory

@@ -3,6 +3,7 @@ import AppKit
 
 struct ChatsView: View {
     @ObservedObject var store: DeckStore
+    let scope: ChatScope
     @Binding var focusedChatID: String?
 
     @State private var selection: Set<String> = []
@@ -14,6 +15,7 @@ struct ChatsView: View {
     @State private var renameTarget: ChatSession?
     @State private var mergeTargets: [ChatSession] = []
     @State private var trashTargets: [ChatSession] = []
+    @State private var moveTargets: [ChatSession] = []
 
     private var projects: [(dir: String, count: Int)] {
         Dictionary(grouping: store.chats, by: \.projectDir)
@@ -23,6 +25,11 @@ struct ChatsView: View {
 
     private var filtered: [ChatSession] {
         store.chats.filter { chat in
+            switch scope {
+            case .all: break
+            case .context(let context): if store.context(for: chat) != context { return false }
+            case .unassigned: if store.context(for: chat) != nil { return false }
+            }
             if let projectFilter, chat.projectDir != projectFilter { return false }
             if let accountFilter, !(store.sessionAccounts[chat.id]?.contains(accountFilter) ?? false) { return false }
             guard !query.isEmpty else { return true }
@@ -45,7 +52,7 @@ struct ChatsView: View {
             detailPane
                 .frame(minWidth: 420, maxWidth: .infinity)
         }
-        .navigationTitle("Chat")
+        .navigationTitle(scopeTitle)
         .toolbar { toolbar }
         .onChange(of: focusedChatID) { _, id in
             guard let id else { return }
@@ -60,6 +67,18 @@ struct ChatsView: View {
         }
         .onChange(of: searchContent) { _, enabled in
             store.searchContent(enabled ? query : "")
+        }
+        .sheet(isPresented: Binding(get: { !moveTargets.isEmpty }, set: { if !$0 { moveTargets = [] } })) {
+            FolderPickerSheet(
+                store: store,
+                title: moveTargets.count == 1 ? "Sposta “\(moveTargets[0].displayTitle)”" : "Sposta \(moveTargets.count) chat",
+                message: "La chat verrà registrata nella nuova cartella: da lì la ritrovi con /resume e Claude lavora in quella cartella.",
+                excluding: Set(moveTargets.map(\.workingDirectory))
+            ) { folder in
+                let targets = moveTargets
+                selection.subtract(targets.map(\.id))
+                store.move(targets, to: folder)
+            }
         }
         .sheet(item: $renameTarget) { chat in
             RenameSheet(chat: chat) { title in
@@ -104,6 +123,8 @@ struct ChatsView: View {
                         ChatRow(
                             chat: chat,
                             accounts: store.accounts(for: chat),
+                            context: store.context(for: chat),
+                            showContext: scope == .all,
                             isActive: store.activeSessionIDs.contains(chat.id)
                         )
                         .tag(chat.id)
@@ -208,6 +229,16 @@ struct ChatsView: View {
                 .tint(Theme.coral)
             }
 
+            Button {
+                moveTargets = selectedChats
+            } label: {
+                Image(systemName: "folder.badge.gearshape")
+            }
+            .help("Sposta in un'area o in un progetto")
+            .secondaryButton()
+
+            contextMenuButton(for: selectedChats)
+
             Button(role: .destructive) {
                 trashTargets = selectedChats
             } label: {
@@ -260,7 +291,39 @@ struct ChatsView: View {
             Button("Unisci \(targets.count) chat…") { mergeTargets = targets }
         }
         Divider()
+        Button("Sposta in…") { moveTargets = targets }
+        Menu("Contesto") { contextItems(for: targets) }
+        Divider()
         Button("Sposta nel Cestino", role: .destructive) { trashTargets = targets }
+    }
+
+    @ViewBuilder
+    private func contextItems(for targets: [ChatSession]) -> some View {
+        ForEach(store.config.contexts, id: \.self) { context in
+            Button(context) { store.setContext(context, for: targets) }
+        }
+        Divider()
+        Button("Automatico (dalla cartella)") { store.setContext(nil, for: targets) }
+    }
+
+    private func contextMenuButton(for targets: [ChatSession]) -> some View {
+        Menu {
+            contextItems(for: targets)
+        } label: {
+            Image(systemName: "tag")
+        }
+        .menuStyle(.button)
+        .secondaryButton()
+        .fixedSize()
+        .help("Assegna a un contesto")
+    }
+
+    private var scopeTitle: String {
+        switch scope {
+        case .all: return "Tutte le chat"
+        case .context(let context): return context
+        case .unassigned: return "Da assegnare"
+        }
     }
 
     // MARK: - Detail
@@ -322,6 +385,8 @@ struct ChatsView: View {
 private struct ChatRow: View {
     let chat: ChatSession
     let accounts: [ClaudeAccount]
+    let context: String?
+    let showContext: Bool
     let isActive: Bool
 
     var body: some View {
@@ -353,6 +418,9 @@ private struct ChatRow: View {
                     .lineLimit(1)
                 ForEach(accounts) { account in
                     AccountBadge(account: account, compact: true)
+                }
+                if showContext || context == nil {
+                    ContextBadge(context: context)
                 }
                 Spacer()
                 Text("\(chat.promptCount) msg · \(formatBytes(chat.sizeBytes))")

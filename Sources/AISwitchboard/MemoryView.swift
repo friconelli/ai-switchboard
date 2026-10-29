@@ -8,6 +8,7 @@ struct MemoryView: View {
     @State private var text = ""
     @State private var original = ""
     @State private var trashTarget: MemoryFile?
+    @State private var moveTarget: MemoryFile?
 
     private var grouped: [(project: String, files: [MemoryFile])] {
         Dictionary(grouping: store.memoryFiles, by: \.projectDir)
@@ -36,6 +37,8 @@ struct MemoryView: View {
                             .tag(file)
                             .contextMenu {
                                 Button("Mostra nel Finder") { NSWorkspace.shared.activateFileViewerSelecting([file.url]) }
+                                Button("Sposta in…") { moveTarget = file }
+                                    .disabled(file.isIndex)
                                 Button("Sposta nel Cestino", role: .destructive) { trashTarget = file }
                             }
                         }
@@ -58,6 +61,16 @@ struct MemoryView: View {
             }
         }
         .onChange(of: selection) { _, file in load(file) }
+        .sheet(item: $moveTarget) { file in
+            FolderPickerSheet(
+                store: store,
+                title: "Sposta “\(file.url.deletingPathExtension().lastPathComponent)”",
+                message: "Il ricordo passerà nella memoria della cartella scelta; la riga corrispondente viene spostata tra i due MEMORY.md."
+            ) { folder in
+                if selection == file { selection = nil }
+                store.moveMemory(file, toFolder: folder)
+            }
+        }
         .alert(
             "Spostare “\(trashTarget?.url.lastPathComponent ?? "")” nel Cestino?",
             isPresented: Binding(get: { trashTarget != nil }, set: { if !$0 { trashTarget = nil } })
