@@ -147,6 +147,7 @@ enum SlimEngine {
         "Read", "Bash", "Grep", "Glob", "LS", "WebFetch", "WebSearch", "BashOutput",
     ]
 
+    private static let logPrefix = Array(#"{"type":"api-request"#.utf8)
     private static let longLimit = 4000
     private static let imageTokens = 1600
 
@@ -159,6 +160,15 @@ enum SlimEngine {
             guard let base = raw.baseAddress else { return }
             ChatIndexer.forEachLine(base: base, count: raw.count) { pointer, length in
                 let bytes = UnsafeRawBufferPointer(start: pointer, count: length)
+                // Internal request logs are a third of an archive and only ever dropped whole:
+                // their type is enough, no need to parse them.
+                if length > logPrefix.count, memcmp(pointer, logPrefix, logPrefix.count) == 0 {
+                    var end = logPrefix.count
+                    while end < length, bytes[end] != 0x22 { end += 1 }
+                    let type = String(decoding: bytes[9..<end], as: UTF8.self)
+                    lines.append(Line(raw: String(decoding: bytes, as: UTF8.self), json: ["type": type]))
+                    return
+                }
                 guard let json = (try? JSONSerialization.jsonObject(with: Data(bytes))) as? [String: Any] else { return }
                 lines.append(Line(raw: String(decoding: bytes, as: UTF8.self), json: json))
             }
@@ -523,6 +533,10 @@ enum SlimEngine {
     struct Outcome: Sendable {
         let before: Int
         let after: Int
+        /// Tokens Claude no longer rereads, scaled to the context Claude Code measured.
+        var tokensSaved = 0
+        /// What slimming would still gain on the slimmed file, and the context left.
+        var remaining: SlimEntry?
     }
 
     static func apply(_ source: Source, plan: Plan) throws -> Outcome {

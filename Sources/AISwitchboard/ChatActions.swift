@@ -74,12 +74,13 @@ struct ChatHealthView: View {
 
     var body: some View {
         if let usage = store.usage[chat.id] {
-            let insights = ModelAdvisor.insights(for: chat, usage: usage)
+            let insights = store.insights(for: chat)
+            let context = store.contextTokens(for: chat)
             let recommendation = ModelAdvisor.recommend(usage, prompts: chat.promptCount)
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
-                    chip("\(usage.lastContext / 1000)k token", symbol: "scalemass",
-                         tint: usage.lastContext >= 100_000 ? .orange : .secondary,
+                    chip("\(context / 1000)k token", symbol: "scalemass",
+                         tint: context >= 100_000 ? .orange : .secondary,
                          help: "Contesto che Claude rilegge a ogni nuovo messaggio")
                     if let used = usage.dominantTier {
                         chip(used.label, symbol: "cpu", tint: .secondary, help: "Modello usato per la maggior parte delle risposte")

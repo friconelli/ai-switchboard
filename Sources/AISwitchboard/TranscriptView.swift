@@ -43,7 +43,7 @@ struct TranscriptView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .task(id: chat.id) {
+        .task(id: "\(chat.id)|\(chat.sizeBytes)|\(chat.modifiedAt.timeIntervalSince1970)") {
             isLoading = true
             let url = chat.fileURL
             let result = await Task.detached(priority: .userInitiated) { TranscriptReader.read(url) }.value

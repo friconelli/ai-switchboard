@@ -62,7 +62,7 @@ struct InsightsView: View {
     private var advice: [ChatAdvice] {
         store.chats.compactMap { chat in
             guard let usage = store.usage[chat.id] else { return nil }
-            let insights = ModelAdvisor.insights(for: chat, usage: usage)
+            let insights = store.insights(for: chat)
             guard !insights.isEmpty else { return nil }
             return ChatAdvice(chat: chat, usage: usage, insights: insights, recent: recentWeight(usage))
         }
@@ -112,7 +112,7 @@ struct InsightsView: View {
         let recent = all.reduce(0) { $0 + recentWeight($1) }
         let weighted = all.reduce(0) { $0 + $1.weighted }
         let cacheShare = weighted > 0 ? all.reduce(0) { $0 + Double($1.cacheReadTokens) * 0.1 } / weighted : 0
-        let heavy = store.chats.filter { ($0.modifiedAt > Date().addingTimeInterval(-30 * 86_400)) && (store.usage[$0.id]?.lastContext ?? 0) >= 100_000 }.count
+        let heavy = store.chats.filter { ($0.modifiedAt > Date().addingTimeInterval(-30 * 86_400)) && store.contextTokens(for: $0) >= 100_000 }.count
         var tiers: [String: Int] = [:]
         for usage in all { for (tier, count) in usage.models { tiers[tier, default: 0] += count } }
         let total = max(1, tiers.values.reduce(0, +))
@@ -352,10 +352,8 @@ struct InsightsView: View {
 
     private func symbol(_ kind: ModelAdvisor.Insight.Kind) -> String {
         switch kind {
-        case .heavyContext: return "scalemass"
+        case .slimGain: return "arrow.down.right.and.arrow.up.left"
         case .compactions: return "rectangle.compress.vertical"
-        case .images: return "photo.on.rectangle"
-        case .largeFile: return "externaldrive"
         case .modelDown: return "hare"
         case .modelUp: return "tortoise"
         }

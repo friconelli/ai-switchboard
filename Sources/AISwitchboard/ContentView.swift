@@ -56,7 +56,7 @@ struct ContentView: View {
                         .tag(DeckSection.chats(.unassigned))
                 }
                 Section("Organizza") {
-                    let advice = store.chats.filter { ModelAdvisor.hasMajorIssue($0, usage: store.usage[$0.id]) }.count
+                    let advice = store.chats.filter { store.hasAdvice(for: $0) }.count
                     row("Consigli", symbol: "lightbulb.fill", tint: .yellow, count: advice, highlight: advice > 0 ? .orange : nil)
                         .tag(DeckSection.insights)
                         .help("Chat da snellire o dividere e modello giusto per ogni lavoro")

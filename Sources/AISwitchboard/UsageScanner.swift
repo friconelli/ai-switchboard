@@ -185,39 +185,30 @@ enum ModelAdvisor {
 
     struct Insight: Identifiable, Sendable {
         enum Action: Sendable { case slim, split }
-        enum Kind: Sendable { case heavyContext, compactions, images, largeFile, modelDown, modelUp }
+        enum Kind: Sendable { case slimGain, compactions, modelDown, modelUp }
 
         var id: String { "\(chatID)-\(kind)" }
-        /// Problems that cost on every message; the others are suggestions.
-        var isMajor: Bool { kind == .heavyContext || kind == .compactions }
         let chatID: String
         let kind: Kind
         let text: String
         let action: Action?
+        /// Worth doing now: these light the bulb. Model advice is only a suggestion.
+        var isMajor: Bool { kind == .slimGain || kind == .compactions }
     }
 
-    static func hasMajorIssue(_ chat: ChatSession, usage: ChatUsage?) -> Bool {
-        guard let usage else { return false }
-        return usage.lastContext >= 100_000 || usage.compactions >= 2
-    }
-
-    static func insights(for chat: ChatSession, usage: ChatUsage) -> [Insight] {
+    /// `context`: what Claude rereads now (reduced by slimming). `slim`: what slimming would still
+    /// gain on the file as it is; without it nothing is suggested, so a slim chat shows no advice.
+    static func insights(for chat: ChatSession, usage: ChatUsage, context: Int, slim: SlimEntry?) -> [Insight] {
         var result: [Insight] = []
         func add(_ kind: Insight.Kind, _ text: String, _ action: Insight.Action?) {
             result.append(Insight(chatID: chat.id, kind: kind, text: text, action: action))
         }
 
-        if usage.lastContext >= 100_000 {
-            add(.heavyContext, "Ogni nuovo messaggio fa rileggere a Claude ~\(usage.lastContext / 1000)k token di contesto.", .slim)
+        if let slim, slim.isWorthIt {
+            add(.slimGain, "Snellendo la chat Claude rilegge ~\(slim.tokens / 1000)k token in meno a ogni messaggio (ora ~\(context / 1000)k).", .slim)
         }
-        if usage.compactions >= 2 {
-            add(.compactions, "Compattata \(usage.compactions) volte: è diventata troppo lunga, conviene dividerla per argomenti.", .split)
-        }
-        if usage.images >= 15 {
-            add(.images, "\(usage.images) immagini nella storia: pesano sul file e, se recenti, sul contesto.", .slim)
-        }
-        if chat.sizeBytes >= 20_000_000 {
-            add(.largeFile, "File da \(formatBytes(chat.sizeBytes)): buona parte sono dati tecnici e immagini.", .slim)
+        if usage.compactions >= 2 && context >= 100_000 {
+            add(.compactions, "Compattata \(usage.compactions) volte e ancora ~\(context / 1000)k token di contesto: conviene dividerla per argomenti.", .split)
         }
         if let used = usage.dominantTier, let recommended = recommend(usage, prompts: chat.promptCount) {
             if recommended.tier.order < used.order {

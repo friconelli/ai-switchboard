@@ -60,6 +60,10 @@ struct ChatsView: View {
         .onChange(of: focusedChatID) { _, id in
             guard let id else { return }
             selection = [id]
+            // Screenshots/tests: `-debugOpenSlim YES` opens the slim sheet for the focused chat.
+            if UserDefaults.standard.bool(forKey: "debugOpenSlim"), let chat = store.chats.first(where: { $0.id == id }) {
+                slimTargets = [chat]
+            }
             projectFilter = nil
             accountFilter = nil
             query = ""
@@ -137,7 +141,7 @@ struct ChatsView: View {
                             context: store.context(for: chat),
                             showContext: scope == .all,
                             isActive: store.activeSessionIDs.contains(chat.id),
-                            hasAdvice: ModelAdvisor.hasMajorIssue(chat, usage: store.usage[chat.id]),
+                            hasAdvice: store.hasAdvice(for: chat),
                             description: store.description(for: chat)
                         )
                         .tag(chat.id)

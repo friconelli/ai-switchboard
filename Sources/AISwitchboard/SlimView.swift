@@ -32,6 +32,9 @@ struct SlimSheet: View {
     private var bytesSaved: Int { enabled.reduce(0) { $0 + (savings[$1]?.bytes ?? 0) } }
     private var tokensSaved: Int { enabled.reduce(0) { $0 + (savings[$1]?.tokens ?? 0) } }
 
+    /// Same bar as the suggestions: a few bytes of new logs are not a reason to rewrite a chat.
+    private var hasRealGain: Bool { tokensSaved >= SlimAdvisor.sheetMinTokens || bytesSaved >= SlimAdvisor.sheetMinBytes }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 12) {
@@ -64,7 +67,15 @@ struct SlimSheet: View {
         }
         .padding(22)
         .frame(width: 620)
-        .task { await analyze() }
+        .task {
+            await analyze()
+            // Tests: `-debugAutoSlim YES` confirms by itself, shows the result for a moment and closes.
+            if UserDefaults.standard.bool(forKey: "debugAutoSlim"), hasRealGain {
+                run()
+                try? await Task.sleep(for: .seconds(8))
+                dismiss()
+            }
+        }
     }
 
     // MARK: - Sections
@@ -151,29 +162,59 @@ struct SlimSheet: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
+            if !hasRealGain {
+                Label(
+                    chats.count == 1
+                        ? "Questa chat è già snella: con queste scelte non c'è niente di utile da togliere."
+                        : "Queste chat sono già snelle: con queste scelte non c'è niente di utile da togliere.",
+                    systemImage: "checkmark.seal.fill"
+                )
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.green)
+            } else if tokensSaved < SlimAdvisor.sheetMinTokens {
+                Label("Guadagni solo spazio su disco: il contesto che Claude rilegge non cambia.", systemImage: "externaldrive")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
             HStack {
                 if let progress {
                     ProgressView().controlSize(.small)
                     Text(progress).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Annulla", role: .cancel) { dismiss() }
+                Button(hasRealGain ? "Annulla" : "Chiudi", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("Snellisci") { run() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(progress != nil || enabled.isEmpty || bytesSaved == 0)
+                    .disabled(progress != nil || enabled.isEmpty || !hasRealGain)
             }
         }
     }
 
     private func done(_ result: DeckStore.SlimResult) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(
-                "\(result.slimmed) chat snellite: \(formatBytes(Int64(result.before))) → \(formatBytes(Int64(result.after)))",
-                systemImage: "checkmark.circle.fill"
-            )
-            .font(.headline)
-            .foregroundStyle(.green)
+            if result.slimmed > 0 {
+                Label(
+                    "\(result.slimmed) chat snellite: \(formatBytes(Int64(result.before))) → \(formatBytes(Int64(result.after)))",
+                    systemImage: "checkmark.circle.fill"
+                )
+                .font(.headline)
+                .foregroundStyle(.green)
+                if result.tokensSaved > 0 {
+                    Text("Alla ripresa Claude rilegge ~\(tokens(result.tokensSaved)) token in meno a ogni messaggio.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if result.alreadySlim > 0 {
+                Label(
+                    result.alreadySlim == 1 ? "1 chat era già snella e non è stata toccata." : "\(result.alreadySlim) chat erano già snelle e non sono state toccate.",
+                    systemImage: "checkmark.seal"
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            }
             if !result.problems.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Non toccate:").font(.caption.weight(.semibold))
@@ -195,12 +236,12 @@ struct SlimSheet: View {
         let keepSet = Set(SlimEngine.Category.allCases).subtracting([.compacted])
         let allSet = Set(SlimEngine.Category.allCases)
         for chat in chats {
-            let measured = store.usage[chat.id]?.lastContext ?? 0
+            let measured = store.contextTokens(for: chat)
             let partial: Estimate? = await Task.detached(priority: .userInitiated) {
                 guard let source = try? SlimEngine.analyze(chat) else { return nil }
                 // The character-based estimate runs high: when Claude Code recorded the real context
                 // size of the last request, use it and scale the savings to match.
-                let factor = measured > 0 && source.contextTokens > 0 ? min(1, Double(measured) / Double(source.contextTokens)) : 1
+                let factor = SlimAdvisor.factor(measured: measured, estimated: source.contextTokens)
                 func scaled(_ savings: [SlimEngine.Category: SlimEngine.Saving]) -> [SlimEngine.Category: SlimEngine.Saving] {
                     savings.mapValues { var saving = $0; saving.tokens = Int(Double(saving.tokens) * factor); return saving }
                 }

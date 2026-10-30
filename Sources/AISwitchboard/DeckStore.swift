@@ -29,11 +29,17 @@ final class DeckStore: ObservableObject {
     @Published var descriptions: [String: String] = [:]
     @Published var describingRemaining = 0
     @Published var isScanningUsage = false
+    @Published var slimEntries: [String: SlimEntry] = SlimAdvisor.load()
 
     private let indexer = ChatIndexer()
     private let usageScanner = UsageScanner()
     private let descriptionCache = DescriptionCache()
     private var isDescribing = false
+    private var isScanningSlim = false
+    /// A reload asked for while another was running: run again when it ends, so the result is never stale.
+    private var reloadChatsQueued = false
+    private var reloadUsageQueued = false
+    private var rescanSlimQueued = false
     private var timer: Timer?
     private var searchTask: Process?
 
@@ -62,7 +68,10 @@ final class DeckStore: ObservableObject {
     }
 
     func reloadChats() {
-        guard !isIndexing else { return }
+        guard !isIndexing else {
+            reloadChatsQueued = true
+            return
+        }
         isIndexing = true
         let indexer = indexer
         Task.detached(priority: .userInitiated) {
@@ -74,13 +83,21 @@ final class DeckStore: ObservableObject {
                 self.chats = result
                 self.isIndexing = false
                 self.indexProgress = 1
-                self.reloadUsage()
+                if self.reloadChatsQueued {
+                    self.reloadChatsQueued = false
+                    self.reloadChats()
+                } else {
+                    self.reloadUsage()
+                }
             }
         }
     }
 
     func reloadUsage() {
-        guard !isScanningUsage else { return }
+        guard !isScanningUsage else {
+            reloadUsageQueued = true
+            return
+        }
         isScanningUsage = true
         let scanner = usageScanner
         let chats = chats
@@ -89,7 +106,73 @@ final class DeckStore: ObservableObject {
             await MainActor.run {
                 self.usage = result
                 self.isScanningUsage = false
-                self.refreshDescriptions()
+                if self.reloadUsageQueued {
+                    self.reloadUsageQueued = false
+                    self.reloadUsage()
+                } else {
+                    self.refreshDescriptions()
+                    self.refreshSlimEntries()
+                }
+            }
+        }
+    }
+
+    // MARK: - Slimming advice
+
+    /// What slimming would gain on `chat` as the file is now; nil until it has been worked out.
+    func slimEntry(for chat: ChatSession) -> SlimEntry? {
+        slimEntries[chat.id].flatMap { $0.matches(chat) ? $0 : nil }
+    }
+
+    /// Context Claude rereads on resume: reduced by slimming, otherwise as recorded by Claude Code.
+    func contextTokens(for chat: ChatSession) -> Int {
+        slimEntry(for: chat)?.context ?? usage[chat.id]?.lastContext ?? 0
+    }
+
+    func insights(for chat: ChatSession) -> [ModelAdvisor.Insight] {
+        guard let usage = usage[chat.id] else { return [] }
+        return ModelAdvisor.insights(for: chat, usage: usage, context: contextTokens(for: chat), slim: slimEntry(for: chat))
+    }
+
+    /// The lightbulb: something to do that really pays off.
+    func hasAdvice(for chat: ChatSession) -> Bool {
+        insights(for: chat).contains { $0.isMajor }
+    }
+
+    /// Works out the gain for chats that could have one, one at a time, publishing each result.
+    func refreshSlimEntries() {
+        guard !isScanningSlim else {
+            rescanSlimQueued = true
+            return
+        }
+        let active = activeSessionIDs
+        let pending = chats.filter { chat in
+            slimEntry(for: chat) == nil
+                && !active.contains(chat.id)
+                && SlimAdvisor.isCandidate(chat, measuredContext: usage[chat.id]?.lastContext ?? 0)
+        }
+        let live = Set(chats.map(\.id))
+        if slimEntries.keys.contains(where: { !live.contains($0) }) {
+            slimEntries = slimEntries.filter { live.contains($0.key) }
+            SlimAdvisor.save(slimEntries)
+        }
+        guard !pending.isEmpty else { return }
+        isScanningSlim = true
+        let measured = Dictionary(uniqueKeysWithValues: pending.map { ($0.id, usage[$0.id]?.lastContext ?? 0) })
+        Task.detached(priority: .utility) {
+            for chat in pending {
+                let entry = SlimAdvisor.evaluate(chat, measured: measured[chat.id] ?? 0)
+                await MainActor.run {
+                    if let entry { self.slimEntries[chat.id] = entry }
+                }
+            }
+            await MainActor.run {
+                SlimAdvisor.save(self.slimEntries)
+                self.isScanningSlim = false
+                if self.rescanSlimQueued {
+                    self.rescanSlimQueued = false
+                    self.refreshSlimEntries()
+                }
             }
         }
     }
@@ -292,6 +375,11 @@ final class DeckStore: ObservableObject {
 
     func rename(_ chat: ChatSession, to title: String) {
         perform { try ChatOperations.rename(chat, to: title) }
+        // The list shows the new title at once; the re-index only confirms it.
+        if let position = chats.firstIndex(where: { $0.id == chat.id }), errorMessage == nil {
+            chats[position].title = title
+            chats[position].isCustomTitle = true
+        }
     }
 
     func trash(_ chats: [ChatSession]) {
@@ -300,9 +388,16 @@ final class DeckStore: ObservableObject {
             errorMessage = ChatOperationError.active(busy.displayTitle).localizedDescription
             return
         }
+        var trashed: Set<String> = []
         perform {
-            for chat in chats { try ChatOperations.trash(chat) }
+            for chat in chats {
+                try ChatOperations.trash(chat)
+                trashed.insert(chat.id)
+            }
         }
+        self.chats.removeAll { trashed.contains($0.id) }
+        usage = usage.filter { !trashed.contains($0.key) }
+        slimEntries = slimEntries.filter { !trashed.contains($0.key) }
     }
 
     /// Merges `ordered` (in the given order) into a new chat saved next to `target`, then moves
@@ -402,12 +497,16 @@ final class DeckStore: ObservableObject {
 
     struct SlimResult {
         var slimmed = 0
+        /// Chats with nothing worth removing, left untouched.
+        var alreadySlim = 0
         var before = 0
         var after = 0
+        var tokensSaved = 0
         var problems: [String] = []
     }
 
     /// Slims chats one at a time (each is read, rewritten, verified and swapped in place).
+    /// A chat where the chosen categories would gain next to nothing is left alone.
     func slim(_ chats: [ChatSession], enabled: Set<SlimEngine.Category>, progress: @escaping (Int) -> Void) async -> SlimResult {
         var result = SlimResult()
         let active = activeSessionIDs
@@ -417,20 +516,43 @@ final class DeckStore: ObservableObject {
                 result.problems.append("“\(chat.displayTitle)”: aperta in una sessione")
                 continue
             }
+            let measured = contextTokens(for: chat)
             do {
-                let outcome = try await Task.detached(priority: .userInitiated) {
+                let outcome = try await Task.detached(priority: .userInitiated) { () -> SlimEngine.Outcome in
                     let source = try SlimEngine.analyze(chat)
                     let plan = SlimEngine.plan(source, enabled: enabled)
-                    guard plan.bytesSaved > 0 else { return SlimEngine.Outcome(before: source.sizeBytes, after: source.sizeBytes) }
-                    return try SlimEngine.apply(source, plan: plan)
+                    let scale = SlimAdvisor.factor(measured: measured, estimated: source.contextTokens)
+                    let tokens = Int(Double(plan.tokensSaved) * scale)
+                    guard tokens >= SlimAdvisor.sheetMinTokens || plan.bytesSaved >= SlimAdvisor.sheetMinBytes else {
+                        return SlimEngine.Outcome(before: Int(source.sizeBytes), after: Int(source.sizeBytes))
+                    }
+                    var outcome = try SlimEngine.apply(source, plan: plan)
+                    outcome.tokensSaved = tokens
+                    let left = max(0, (measured > 0 ? measured : source.contextTokens) - tokens)
+                    outcome.remaining = SlimAdvisor.evaluate(chat, measured: left)
+                    return outcome
                 }.value
+                if outcome.before == outcome.after, outcome.remaining == nil {
+                    result.alreadySlim += 1
+                    continue
+                }
                 result.slimmed += 1
                 result.before += outcome.before
                 result.after += outcome.after
+                result.tokensSaved += outcome.tokensSaved
+                if let remaining = outcome.remaining {
+                    slimEntries[chat.id] = remaining
+                    // Show the new size straight away; the re-index below confirms it.
+                    if let position = self.chats.firstIndex(where: { $0.id == chat.id }) {
+                        self.chats[position].sizeBytes = remaining.size
+                        self.chats[position].modifiedAt = remaining.modified
+                    }
+                }
             } catch {
                 result.problems.append("“\(chat.displayTitle)”: \(error.localizedDescription)")
             }
         }
+        SlimAdvisor.save(slimEntries)
         reloadChats()
         return result
     }
