@@ -66,18 +66,18 @@ struct TranscriptView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    HStack(spacing: 8) {
+                    FlowLayout(spacing: 8, lineSpacing: 4) {
                         Label(chat.workingDirectory.replacingOccurrences(of: ClaudePaths.home.path, with: "~"), systemImage: "folder")
                             .lineLimit(1)
                             .truncationMode(.middle)
-                        ContextBadge(context: store.context(for: chat))
+                        ContextBadge(context: store.context(for: chat)).fixedSize()
                         ForEach(store.accounts(for: chat)) { account in
-                            AccountBadge(account: account, compact: true)
+                            AccountBadge(account: account, compact: true).fixedSize()
                         }
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    HStack(spacing: 10) {
+                    FlowLayout(spacing: 10, lineSpacing: 2) {
                         Text("\(chat.promptCount) messaggi tuoi")
                         Text(formatBytes(chat.sizeBytes))
                         if let started = chat.startedAt {
@@ -92,7 +92,7 @@ struct TranscriptView: View {
                 ResumeButton(store: store, chat: chat, large: true)
             }
 
-            HStack(spacing: 8) {
+            FlowLayout(spacing: 8, lineSpacing: 6) {
                 ToolButton(title: "Dividi", symbol: "scissors") { actions.split(chat) }
                     .help("Dividi in più chat, una per argomento")
                 ToolButton(title: "Snellisci", symbol: "arrow.down.right.and.arrow.up.left") { actions.slim([chat]) }
@@ -122,7 +122,6 @@ struct TranscriptView: View {
                 .menuIndicator(.hidden)
                 .secondaryButton()
                 .fixedSize()
-                Spacer()
             }
             .controlSize(.small)
 
