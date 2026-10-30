@@ -26,6 +26,29 @@ struct WorkspacesView: View {
                     .secondaryButton()
                 }
 
+                if store.config.contexts.isEmpty {
+                    Card {
+                        HStack(spacing: 14) {
+                            IconTile(symbol: "tag.fill", tint: Theme.coral, size: 36)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Nessun contesto").font(.headline)
+                                Text("Le aree di lavoro si creano dentro un contesto (es. personale, lavoro). Scegli i tuoi dalla configurazione guidata.")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer()
+                            Button {
+                                NotificationCenter.default.post(name: .showOnboarding, object: nil)
+                            } label: {
+                                Label("Configura", systemImage: "wand.and.stars")
+                            }
+                            .prominentButton()
+                            .tint(Theme.coral)
+                        }
+                    }
+                }
+
                 ForEach(store.config.contexts, id: \.self) { context in
                     contextSection(context)
                 }

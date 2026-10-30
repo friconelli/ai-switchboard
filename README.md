@@ -6,7 +6,7 @@ App macOS (SwiftUI) per gestire le chat di Claude Code, anche con più account: 
 
 1. Scarica `AISwitchboard.zip` dall'[ultima release](https://github.com/friconelli/ai-switchboard/releases/latest), aprilo e trascina **AISwitchboard.app** in Applicazioni.
 2. L'app non è firmata con un certificato Apple, quindi al primo avvio macOS la blocca: apri **Impostazioni di Sistema → Privacy e sicurezza** e, in fondo, premi **Apri comunque** accanto ad AISwitchboard (in alternativa, da Terminale: `xattr -dr com.apple.quarantine /Applications/AISwitchboard.app`). Serve solo la prima volta: gli aggiornamenti scaricati dall'app non lo richiedono.
-3. Al primo avvio la **configurazione guidata** chiede gli account Claude (quelli già presenti o nuovi, con login), le cartelle delle chat e dei progetti, i contesti e le prime aree di lavoro. Si riapre da Account → *Configurazione guidata…*.
+3. Al primo avvio la **configurazione guidata** (si può saltare in qualsiasi momento con *Salta per ora*) chiede gli account Claude (quelli già presenti o nuovi, con login), le cartelle delle chat e dei progetti, i contesti e le prime aree di lavoro. Si riapre da Account → *Configurazione guidata…*.
 
 Requisiti: macOS 14+, [Claude Code](https://claude.com/claude-code) installato. [Warp](https://www.warp.dev) consigliato (altrimenti usa Terminale).
 
