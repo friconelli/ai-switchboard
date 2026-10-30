@@ -23,6 +23,8 @@ enum SplitEngine {
 
     struct Topic: Sendable {
         var title: String
+        /// Short description of what the chat covers; kept as the new chat's description.
+        var description: String?
         var folder: String
         var turns: [Int]
         var summary: String?
@@ -33,8 +35,11 @@ enum SplitEngine {
         let fileURL: URL
         let projectDir: String
         let title: String
+        let description: String?
         let folder: String
         let messageCount: Int
+        /// Prompts kept, as the indexer will count them.
+        let promptCount: Int
     }
 
     /// A parsed transcript ready to be split.
@@ -242,8 +247,10 @@ enum SplitEngine {
                 fileURL: item.final,
                 projectDir: projectDir,
                 title: item.topic.title,
+                description: item.topic.description?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty,
                 folder: item.topic.folder,
-                messageCount: item.count
+                messageCount: item.count,
+                promptCount: item.topic.turns.filter { source.turnLines.indices.contains($0) }.count
             ))
         }
         return results
@@ -393,27 +400,59 @@ enum ClaudeAssistant {
         }.value
     }
 
-    struct ProposedTopic: Decodable {
-        let title: String
-        let turns: [Int]
+    /// A folder topics can be sorted into, with a hint of what it already holds.
+    struct Container: Sendable {
+        let path: String
+        let kind: String
+        let context: String?
+        let about: String
     }
 
-    /// Asks Claude to group the turns of a chat into topics.
-    static func proposeTopics(for turns: [SplitEngine.Turn], account: ClaudeAccount?) async throws -> [ProposedTopic] {
+    struct ProposedTopic: Sendable {
+        let title: String
+        let description: String
+        let turns: [Int]
+        /// An existing folder from the list, or nil.
+        let folder: String?
+        /// When no folder fits: an area to create.
+        let newAreaName: String?
+        let newAreaContext: String?
+    }
+
+    /// Asks Claude to group the turns of a chat into topics and to say where each one belongs.
+    static func proposeTopics(
+        for turns: [SplitEngine.Turn],
+        containers: [Container],
+        contexts: [String],
+        currentFolder: String,
+        account: ClaudeAccount?
+    ) async throws -> [ProposedTopic] {
         let list = turns.map { "#\($0.id): \($0.prompt.replacingOccurrences(of: "\n", with: " ").prefix(240))" }
+        let folders = containers.map { container in
+            "\(container.path) | \(container.kind)\(container.context.map { " " + $0 } ?? "") | \(container.about.isEmpty ? "vuota" : String(container.about.prefix(260)))"
+        }
         let prompt = """
-        Questa è la lista dei messaggi che un utente ha scritto in una lunga conversazione con un assistente AI, \
-        numerati in ordine. Raggruppali per argomento, in modo da dividere la conversazione in chat più piccole \
-        e focalizzate.
+        Una lunga conversazione tra un utente e un assistente AI va divisa per argomento e ogni argomento \
+        va smistato nella cartella (contenitore) giusta. Qui sotto trovi i messaggi dell'utente, numerati, \
+        e le cartelle disponibili con ciò che contengono già.
 
         Regole:
-        - da 2 a 8 argomenti, ciascuno con un titolo breve in italiano (max 5 parole);
-        - ogni messaggio va in almeno un argomento; un messaggio di contesto generale può stare in più argomenti;
-        - i messaggi brevi di conferma ("ok", "procedi", "perfetto") vanno con l'argomento del messaggio precedente;
-        - rispondi SOLO con JSON valido, senza testo prima o dopo, in questo formato:
-        {"topics":[{"title":"...","turns":[0,1,2]}]}
+        - da 2 a 10 argomenti, ciascuno con: "title" breve in italiano (max 5 parole), "description" di una o \
+        due frasi (max 200 caratteri) che dice cosa copre e a che punto è, e "turns" con i numeri dei messaggi;
+        - ogni messaggio va in almeno un argomento; i messaggi brevi di conferma ("ok", "procedi", "perfetto") \
+        vanno con l'argomento del messaggio precedente; un messaggio di contesto generale può stare in più argomenti;
+        - "container": la cartella più adatta, copiata ESATTAMENTE dalla lista (prima colonna). Scegli in base a \
+        cosa contiene già; argomenti diversi possono andare in cartelle diverse. Se nessuna va bene lascia "" e \
+        compila "new_area" (nome breve, minuscolo, per una nuova area) e "new_area_context" (uno tra: \
+        \(contexts.isEmpty ? "nessun contesto disponibile: lascia vuoto" : contexts.joined(separator: ", "))). Non inventare percorsi;
+        - la cartella attuale della conversazione è \(currentFolder): usala solo se l'argomento c'entra davvero;
+        - rispondi SOLO con JSON valido, senza testo prima o dopo:
+        {"topics":[{"title":"...","description":"...","turns":[0,1],"container":"/percorso","new_area":"","new_area_context":""}]}
 
-        Messaggi:
+        CARTELLE (percorso | tipo e contesto | cosa contiene):
+        \(folders.joined(separator: "\n"))
+
+        MESSAGGI:
         \(list.joined(separator: "\n"))
         """
         let answer = try await ask(prompt, account: account)
@@ -421,12 +460,34 @@ enum ClaudeAssistant {
               let data = String(answer[start...end]).data(using: .utf8) else {
             throw ChatOperationError.io("Risposta non valida da Claude")
         }
-        struct Envelope: Decodable { let topics: [ProposedTopic] }
+        struct Raw: Decodable {
+            let title: String
+            let description: String?
+            let turns: [Int]
+            let container: String?
+            let new_area: String?
+            let new_area_context: String?
+        }
+        struct Envelope: Decodable { let topics: [Raw] }
         let topics = try JSONDecoder().decode(Envelope.self, from: data).topics
         let valid = Set(turns.map(\.id))
-        return topics
-            .map { ProposedTopic(title: $0.title, turns: $0.turns.filter(valid.contains)) }
-            .filter { !$0.turns.isEmpty }
+        let paths = Set(containers.map(\.path))
+        return topics.compactMap { raw in
+            let kept = raw.turns.filter(valid.contains)
+            guard !kept.isEmpty else { return nil }
+            let folder = raw.container.flatMap { paths.contains($0) ? $0 : nil }
+            // A new area needs a context: without any, the topic stays in the chat's folder.
+            let context = raw.new_area_context.flatMap { contexts.contains($0) ? $0 : nil } ?? contexts.first
+            let area = folder == nil && context != nil ? raw.new_area?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty : nil
+            return ProposedTopic(
+                title: raw.title,
+                description: raw.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                turns: kept,
+                folder: folder,
+                newAreaName: area,
+                newAreaContext: area == nil ? nil : context
+            )
+        }
     }
 
     /// Context summary to put at the start of a topic's chat.

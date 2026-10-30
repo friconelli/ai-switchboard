@@ -35,6 +35,13 @@ final class DescriptionCache {
         }
     }
 
+    func set(_ text: String, forChat id: String, promptCount: Int) {
+        entries[id] = Entry(text: text, promptCount: promptCount, generatedAt: Date())
+        if let data = try? JSONEncoder().encode(entries) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
     func forget(_ id: String) {
         entries[id] = nil
     }

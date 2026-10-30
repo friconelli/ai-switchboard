@@ -192,6 +192,22 @@ final class DeckStore: ObservableObject {
         descriptions[chat.id]
     }
 
+    /// Keeps a description written by the user or by the split proposal.
+    func setDescription(_ text: String, forChat id: String, promptCount: Int) {
+        descriptionCache.set(text, forChat: id, promptCount: promptCount)
+        descriptions[id] = text
+    }
+
+    /// What a folder holds, for choosing where something goes: chat count and its latest chats.
+    func folderSummary(_ path: String) -> (count: Int, about: String) {
+        let inside = chats.filter { $0.workingDirectory.isInside(path) }.sorted { $0.modifiedAt > $1.modifiedAt }
+        let about = inside.prefix(2).map { chat in
+            let text = descriptions[chat.id] ?? chat.preview ?? ""
+            return "\(chat.displayTitle): \(text.prefix(110))"
+        }
+        return (inside.count, about.joined(separator: " · "))
+    }
+
     /// Writes missing or outdated descriptions in the background, most recent chats first,
     /// five chats per request. `force` rewrites the given chats even if they have one.
     func refreshDescriptions(force: [ChatSession] = []) {
@@ -477,6 +493,10 @@ final class DeckStore: ObservableObject {
             do { try ChatOperations.trash(chat) } catch {
                 errorMessage = "Divisione completata, ma non ho potuto spostare nel Cestino “\(chat.displayTitle)”."
             }
+        }
+
+        for result in results {
+            if let text = result.description { setDescription(text, forChat: result.sessionID, promptCount: result.promptCount) }
         }
 
         sessionAccounts = AccountScanner.sessionAccounts(accounts)

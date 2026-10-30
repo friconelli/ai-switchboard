@@ -277,6 +277,7 @@ struct FolderPickerSheet: View {
     let title: String
     let message: String
     var excluding: Set<String> = []
+    var confirmLabel = "Sposta qui"
     let onPick: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -284,6 +285,35 @@ struct FolderPickerSheet: View {
     @State private var query = ""
     @State private var newAreaName = ""
     @State private var newAreaContext = ""
+
+    /// Name and what the folder holds, so it is clear where something belongs.
+    private func folderRow(_ folder: WorkFolder, icon: String, tint: Color, context: String? = nil) -> some View {
+        let summary = store.folderSummary(folder.path)
+        return HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .foregroundStyle(tint)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(folder.name).font(.callout.weight(.medium))
+                    Spacer()
+                    if let context {
+                        Text(context).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text(summary.count == 0 ? "vuota" : "\(summary.count) chat")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                if !summary.about.isEmpty {
+                    Text(summary.about)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
 
     private func matches(_ folder: WorkFolder) -> Bool {
         !excluding.contains(folder.path) && (query.isEmpty || folder.name.localizedCaseInsensitiveContains(query))
@@ -305,28 +335,19 @@ struct FolderPickerSheet: View {
                 ForEach(store.config.contexts, id: \.self) { context in
                     Section("Aree · \(context)") {
                         ForEach(store.areas.filter { $0.context == context && matches($0) }) { area in
-                            Label(area.name, systemImage: "folder.fill")
-                                .foregroundStyle(Theme.color(forContext: context))
+                            folderRow(area, icon: "folder.fill", tint: Theme.color(forContext: context))
                                 .tag(area.path)
                         }
                     }
                 }
                 Section("Progetti di codice") {
                     ForEach(store.projects.filter(matches)) { project in
-                        HStack {
-                            Label(project.name, systemImage: "chevron.left.forwardslash.chevron.right")
-                            Spacer()
-                            if let context = project.context {
-                                Text(context)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .tag(project.path)
+                        folderRow(project, icon: "chevron.left.forwardslash.chevron.right", tint: .secondary, context: project.context)
+                            .tag(project.path)
                     }
                 }
             }
-            .frame(height: 300)
+            .frame(height: 360)
 
             HStack(spacing: 8) {
                 Text("Oppure nuova area:")
@@ -362,7 +383,7 @@ struct FolderPickerSheet: View {
                 Spacer()
                 Button("Annulla", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("Sposta qui") {
+                Button(confirmLabel) {
                     if let selection { onPick(selection) }
                     dismiss()
                 }
@@ -371,7 +392,7 @@ struct FolderPickerSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 520)
+        .frame(width: 600)
         .onAppear { newAreaContext = store.config.contexts.first ?? "" }
     }
 }

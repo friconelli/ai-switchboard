@@ -64,6 +64,12 @@ struct ChatsView: View {
             if UserDefaults.standard.bool(forKey: "debugOpenSlim"), let chat = store.chats.first(where: { $0.id == id }) {
                 slimTargets = [chat]
             }
+            if UserDefaults.standard.bool(forKey: "debugOpenSplit"), let chat = store.chats.first(where: { $0.id == id }) {
+                splitTarget = chat
+            }
+            if UserDefaults.standard.bool(forKey: "debugOpenMove"), let chat = store.chats.first(where: { $0.id == id }) {
+                moveTargets = [chat]
+            }
             projectFilter = nil
             accountFilter = nil
             query = ""
